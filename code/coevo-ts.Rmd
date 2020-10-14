@@ -19,8 +19,6 @@ library(here)
 library(tidyverse)
 library(cowplot)
 
-library(tsibble)
-library(feasts)
 # save the state of the project library to the lockfile (called renv.lock),
 renv::snapshot()
 
@@ -49,6 +47,17 @@ From QB handout on temporal diversity:
 The common categories of a time series decomposition are the trend (i.e., increasing or decreasing value in the series), seasonality (repeating short-term cycles), and residual error (i.e., statistical noise due to stochastic changes or sampling error).  
 
 ```{r, include=FALSE}
+# initailise tibble for collecting decompsed data
+d.decomp <- 
+  tibble(Time=NA,
+         line=NA,
+         culture=NA,
+         pop=NA,
+         observed= NA,
+         trend= NA,
+         seasonal= NA,
+         random= NA)
+
 
 for (ln in levels(as.factor(d$line))){
   for (cult in levels(as.factor(d$culture))){
@@ -64,20 +73,69 @@ for (ln in levels(as.factor(d$line))){
       if (grepl("Ct",cult) & pop=="phage.ml")
         next
       
-      d%>%
+  tmp <- 
+    d%>%
   filter(Time>=0)%>%
   filter(culture==cult)%>%
   filter(line==ln)%>%
   select(all_of(pop))%>%
 ts(.[,pop], start=0, end=14,frequency = 2 )%>%
-  decompose()%>%
-  plot()
+  decompose()
       
+  # get trend data
+  d.decomp <- 
+  tibble(Time=seq(0,14,0.5),
+         line=ln,
+         culture=cult,
+         pop=pop,
+         observed= as.vector(tmp$x),
+         trend= as.vector(tmp$trend),
+         seasonal= as.vector(tmp$seasonal),
+         random= as.vector(tmp$random))%>%
+    bind_rows(d.decomp,.)
+  tmp$trend%>%as.vector()
+  
     }
 
   }
 
 }
 
+#remove first row used to initialise
+d.decomp <- d.decomp[-1,]
+
+#delete temporary variables
+rm(tmp,cult,ln,pop)
+
 ```
 
+
+### Plot decomposed trend data
+
+```{r}
+d.decomp%>%
+  filter(!is.na(trend))%>%
+  filter(pop!="cell.ml")%>%
+  ggplot(aes(x=Time, y=trend))+
+  geom_line(aes(color=pop), size=1)+
+  facet_grid(line~culture)+
+  theme_cowplot()+
+  panel_border()+
+  scale_y_log10()+
+  theme(legend.position = "bottom")
+  
+```
+
+```{r}
+d.decomp%>%
+  filter(!is.na(trend))%>%
+  filter(pop=="cell.ml" | pop=="phage.ml")%>%
+  ggplot(aes(x=Time, y=trend))+
+  geom_line(aes(color=pop), size=1)+
+  facet_grid(line~culture)+
+  theme_cowplot()+
+  panel_border()+
+  scale_y_log10()+
+  theme(legend.position = "bottom")
+  
+```
