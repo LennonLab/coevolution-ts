@@ -217,7 +217,7 @@ Higher CV indicates more variability, and lower CV indicates less variability.
 Therefore, we can measure stability as the inverse of CV:
 $$\textrm{Stability} = \frac{1}{CV}$$
 
-```{r}
+```{r, echo=F}
 
 d.cell.stab <- 
   d.decomp%>%
@@ -266,14 +266,71 @@ cell.stab%>%
   geom_dotplot(binaxis='y', stackdir='center', fill="white", alpha=0.5)+
   # geom_jitter(shape=21, fill="grey", size=2, width = 0.05, height = 0)+
   facet_wrap(~phage, scales = "free")+
-  theme_cowplot()
+  theme_cowplot()+
+  ggtitle("decomposed trend data on total cell density")
 ```
+
+Now the same analysis with the observed data
+
+```{r, echo=F}
+
+d.cell.stab <- 
+  d.decomp%>%
+  #remove edges in which trend is NA
+  filter(!is.na(observed))%>%
+  # looking only at total cells
+  filter(pop=="cell.ml")%>%
+  as.data.frame()
+
+cell.stab <- 
+  community_stability(df = d.cell.stab,
+                    time.var = "Time",
+                    abundance.var = "observed",
+                    replicate.var = "flask")
+
+cell.stab <- 
+  cell.stab%>%
+    mutate(host=case_when(grepl("W", flask) ~ "WT",
+                         grepl("SN", flask) ~ "dSpoIIE",
+                         grepl("dS", flask) ~ "dSpoIIE"))%>%
+  
+    mutate(phage=case_when(grepl("O", flask) ~ "SPO1",
+                           grepl("Ct", flask) ~ "no_Phage"))%>%
+    
+    mutate(seed.bank=case_when(grepl("SN", flask) ~ "none",
+                                grepl("WS", flask) ~ "short",
+                                grepl("WL", flask) ~ "long"))%>%
+     mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+    
+    mutate(line=str_sub(flask, -2,-1))
+
+#summarise
+sum.cell.stab <- 
+  cell.stab%>%
+    group_by(seed.bank,phage) %>% 
+    summarise(
+      sd = sd(stability),
+      stability = mean(stability))
+    
+    
+  # plot
+cell.stab%>%
+  ggplot(aes(x=seed.bank, y=stability))+
+  geom_crossbar(data=sum.cell.stab,
+                  aes(ymin=stability-sd, ymax=stability+sd), width=0.3)+
+  geom_dotplot(binaxis='y', stackdir='center', fill="white", alpha=0.5)+
+  # geom_jitter(shape=21, fill="grey", size=2, width = 0.05, height = 0)+
+  facet_wrap(~phage, scales = "free")+
+  theme_cowplot()+
+  ggtitle("Observed data on total cell density")
+```
+
 
 # Repeated-Measures Analysis-of-Variance (RM-ANOVA)
 
 *Following QB module*
 
-## RM-ANOVA on total cell data  
+## RM-ANOVA on decomposed trend total cell data  
 ```{r,  message = FALSE, warning = FALSE}
 
 cell.rm <- 
@@ -300,7 +357,7 @@ anova(cell.rm)
 # lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
 ```
 
-## RM-ANOVA on phage data  
+## RM-ANOVA on decomposed trend phage data  
 ```{r,  message = FALSE, warning = FALSE}
 
 phage.rm <- 
@@ -329,7 +386,7 @@ anova(phage.rm)
 ```
 
 
-# Phase Plane w. trend data
+# Phase Plane w. decomposed trend data
 
 ```{r, echo=FALSE}
 # Phase plane plots
