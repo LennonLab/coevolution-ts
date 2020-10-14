@@ -274,11 +274,11 @@ anova(cell.rm)
 # set.caption("RMANOVA for Portal")
 # pander(anova(cell.rm))
 
-# Use `lsmeans` package for time-corrected marginal means
-lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
+# # Use `lsmeans` package for time-corrected marginal means
+# lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
 ```
 
-RM-ANOVA on phage data 
+## RM-ANOVA on phage data  
 ```{r,  message = FALSE, warning = FALSE}
 
 phage.rm <- 
@@ -302,6 +302,6 @@ anova(phage.rm)
 # set.caption("RMANOVA for Portal")
 # pander(anova(cell.rm))
 
-# Use `lsmeans` package for time-corrected marginal means
-lsmeans(phage.rm, ~seed.bank) %>% plot()+theme_cowplot()
+# # Use `lsmeans` package for time-corrected marginal means
+# lsmeans(phage.rm, ~seed.bank) %>% plot()+theme_cowplot()
 ```
