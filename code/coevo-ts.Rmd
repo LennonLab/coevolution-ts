@@ -139,3 +139,53 @@ d.decomp%>%
   theme(legend.position = "bottom")
   
 ```
+
+# Phase Plane w. trend data
+
+```{r, echo=FALSE}
+# Phase plane plots
+d.decomp %>%
+   filter(Time>=0)%>%
+select(Time,culture,line,pop,trend)%>%
+  filter(pop=="cell.ml" | pop=="phage.ml")%>%
+  pivot_wider(values_from = trend, names_from=pop)%>%
+  filter(!is.na(phage.ml))%>%
+ggplot( aes(x=log10(cell.ml), y=log10(phage.ml) ,colour=Time)) +
+  geom_path(arrow = arrow(type = "closed", angle = 15, length = unit(0.1, "inches"))) +
+  facet_grid(line~culture)+#, scales = "free") +
+  xlab("Host (log10)") + ylab("Phage (log10)") +
+  theme_cowplot()+
+   panel_border()+
+   scale_color_viridis_c()+
+   ggtitle("Decomposed trend")
+
+```
+
+# animate
+```{r, include=FALSE}
+library(gganimate)
+library(gifski)
+
+
+# Phase plane plots
+
+p.anim <- 
+d.decomp %>%
+   filter(Time>=0)%>%
+select(Time,culture,line,pop,trend)%>%
+  filter(pop=="cell.ml" | pop=="phage.ml")%>%
+  pivot_wider(values_from = trend, names_from=pop)%>%
+  filter(!is.na(phage.ml))%>%
+ggplot( aes(x=log10(cell.ml), y=log10(phage.ml) ,colour=Time)) +
+  geom_path(arrow = arrow(type = "closed", angle = 15, length = unit(0.1, "inches"))) +
+  facet_grid(line~culture, scales = "free") +
+  xlab("Host (log10)") + ylab("Phage (log10)") +
+  theme_cowplot()+
+   panel_border()+
+   scale_color_viridis_c()+
+   transition_reveal(Time)+
+   ggtitle(label = "All time points", subtitle = "Time {frame_along}")
+
+animate(p.anim, duration = 30, fps = 10,  renderer =gifski_renderer())
+anim_save(here("plots","phase_plane_all.gif"))
+```
