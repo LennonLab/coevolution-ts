@@ -22,6 +22,7 @@ library(cowplot)
 library(nlme)
 library(pander)
 library(emmeans)
+library(codyn)
 
 # save the state of the project library to the lockfile (called renv.lock),
 renv::snapshot()
@@ -252,6 +253,7 @@ anim_save(here("plots","phase_plane_all.gif"))
 
 *Following QB module*
 
+## RM-ANOVA on toal cell data  
 ```{r,  message = FALSE, warning = FALSE}
 
 cell.rm <- 
@@ -304,4 +306,72 @@ anova(phage.rm)
 
 # # Use `lsmeans` package for time-corrected marginal means
 # lsmeans(phage.rm, ~seed.bank) %>% plot()+theme_cowplot()
+```
+
+
+# Stability
+
+From QB:
+
+> The stability of an aggregate measure of an ecological system can be assessed by measuring its variability.
+One way to characterize variability is the Coefficient of Variation (CV). 
+The CV relativizes the standard deviation of a variable to its mean value because variance scales with the mean.
+By using the CV, we can more easily compare the variability of systems with different mean values.
+We can calculate the CV as follows: 
+$$CV = \frac{\sigma}{\mu}$$
+where $\sigma$ is the standard deviation and $\mu$ is the mean value. 
+Higher CV indicates more variability, and lower CV indicates less variability. 
+Therefore, we can measure stability as the inverse of CV:
+$$\textrm{Stability} = \frac{1}{CV}$$
+
+```{r}
+
+d.cell.stab <- 
+  d.decomp%>%
+  #remove edges in which trend is NA
+  filter(!is.na(trend))%>%
+  # looking only at total cells
+  filter(pop=="cell.ml")%>%
+  as.data.frame()
+
+cell.stab <- 
+  community_stability(df = d.cell.stab,
+                    time.var = "Time",
+                    abundance.var = "trend",
+                    replicate.var = "flask")
+
+cell.stab <- 
+  cell.stab%>%
+    mutate(host=case_when(grepl("W", flask) ~ "WT",
+                         grepl("SN", flask) ~ "dSpoIIE",
+                         grepl("dS", flask) ~ "dSpoIIE"))%>%
+  
+    mutate(phage=case_when(grepl("O", flask) ~ "SPO1",
+                           grepl("Ct", flask) ~ "no_Phage"))%>%
+    
+    mutate(seed.bank=case_when(grepl("SN", flask) ~ "none",
+                                grepl("WS", flask) ~ "short",
+                                grepl("WL", flask) ~ "long"))%>%
+     mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+    
+    mutate(line=str_sub(flask, -2,-1))
+
+#summarise
+sum.cell.stab <- 
+  cell.stab%>%
+    group_by(seed.bank,phage) %>% 
+    summarise(
+      sd = sd(stability),
+      stability = mean(stability))
+    
+    
+  # plot
+cell.stab%>%
+  ggplot(aes(x=seed.bank, y=stability))+
+  geom_crossbar(data=sum.cell.stab,
+                  aes(ymin=stability-sd, ymax=stability+sd), width=0.3)+
+  geom_dotplot(binaxis='y', stackdir='center', fill="white", alpha=0.5)+
+  # geom_jitter(shape=21, fill="grey", size=2, width = 0.05, height = 0)+
+  facet_wrap(~phage, scales = "free")+
+  theme_cowplot()
 ```
