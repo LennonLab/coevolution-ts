@@ -199,114 +199,7 @@ d.decomp%>%
 ```
 
 
-# Phase Plane w. trend data
 
-```{r, echo=FALSE}
-# Phase plane plots
-d.decomp %>%
-   filter(Time>=0)%>%
-select(Time,culture,line,pop,trend)%>%
-  filter(pop=="cell.ml" | pop=="phage.ml")%>%
-  pivot_wider(values_from = trend, names_from=pop)%>%
-  filter(!is.na(phage.ml))%>%
-ggplot( aes(x=log10(cell.ml), y=log10(phage.ml) ,colour=Time)) +
-  geom_path(arrow = arrow(type = "closed", angle = 15, length = unit(0.1, "inches"))) +
-  facet_grid(line~culture)+#, scales = "free") +
-  xlab("Host (log10)") + ylab("Phage (log10)") +
-  theme_cowplot()+
-   panel_border()+
-   scale_color_viridis_c()+
-   ggtitle("Decomposed trend")
-
-```
-
-
-```{r animte, eval=FALSE}
-library(gganimate)
-library(gifski)
-
-
-# Phase plane plots
-
-p.anim <- 
-d.decomp %>%
-   filter(Time>=0)%>%
-select(Time,culture,line,pop,trend)%>%
-  filter(pop=="cell.ml" | pop=="phage.ml")%>%
-  pivot_wider(values_from = trend, names_from=pop)%>%
-  filter(!is.na(phage.ml))%>%
-ggplot( aes(x=log10(cell.ml), y=log10(phage.ml) ,colour=Time)) +
-  geom_path(arrow = arrow(type = "closed", angle = 15, length = unit(0.1, "inches"))) +
-  facet_grid(line~culture, scales = "free") +
-  xlab("Host (log10)") + ylab("Phage (log10)") +
-  theme_cowplot()+
-   panel_border()+
-   scale_color_viridis_c()+
-   transition_reveal(Time)+
-   ggtitle(label = "All time points", subtitle = "Time {frame_along}")
-
-animate(p.anim, duration = 15, fps = 10,  renderer =gifski_renderer())
-anim_save(here("plots","phase_plane_all.gif"))
-```
-
-# Repeated-Measures Analysis-of-Variance (RM-ANOVA)
-
-*Following QB module*
-
-## RM-ANOVA on toal cell data  
-```{r,  message = FALSE, warning = FALSE}
-
-cell.rm <- 
-  d.decomp%>%
-  #remove edges in which trend is NA
-  filter(!is.na(trend))%>%
-  # looking only at total cells
-  filter(pop=="cell.ml")%>%
-  lme(trend ~ phage * seed.bank, random = ~ 1 | line, 
-            correlation = corAR1(form = ~ 1 | line),
-            data = .)
-
-# Look at detailed output
-summary(cell.rm) 
-
-# Obtain F-test
-anova(cell.rm)
-
-# # Make cleaner ANOVA table
-# set.caption("RMANOVA for Portal")
-# pander(anova(cell.rm))
-
-# # Use `lsmeans` package for time-corrected marginal means
-# lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
-```
-
-## RM-ANOVA on phage data  
-```{r,  message = FALSE, warning = FALSE}
-
-phage.rm <- 
-  d.decomp%>%
-  # looking only at phages
-  filter(pop=="phage.ml")%>%
-  #remove edges in which trend is NA 
-  # AND remove no-phage controls
-  filter(!is.na(trend))%>%
-  lme(trend ~ seed.bank, random = ~ 1 | line, 
-            correlation = corAR1(form = ~ 1 | line),
-            data = .)
-
-# Look at detailed output
-summary(phage.rm) 
-
-# Obtain F-test
-anova(phage.rm)
-
-# # Make cleaner ANOVA table
-# set.caption("RMANOVA for Portal")
-# pander(anova(cell.rm))
-
-# # Use `lsmeans` package for time-corrected marginal means
-# lsmeans(phage.rm, ~seed.bank) %>% plot()+theme_cowplot()
-```
 
 
 # Stability
@@ -374,4 +267,114 @@ cell.stab%>%
   # geom_jitter(shape=21, fill="grey", size=2, width = 0.05, height = 0)+
   facet_wrap(~phage, scales = "free")+
   theme_cowplot()
+```
+
+# Repeated-Measures Analysis-of-Variance (RM-ANOVA)
+
+*Following QB module*
+
+## RM-ANOVA on total cell data  
+```{r,  message = FALSE, warning = FALSE}
+
+cell.rm <- 
+  d.decomp%>%
+  #remove edges in which trend is NA
+  filter(!is.na(trend))%>%
+  # looking only at total cells
+  filter(pop=="cell.ml")%>%
+  lme(trend ~ phage * seed.bank, random = ~ 1 | line, 
+            correlation = corAR1(form = ~ 1 | line),
+            data = .)
+
+# Look at detailed output
+summary(cell.rm) 
+
+# Obtain F-test
+anova(cell.rm)
+
+# # Make cleaner ANOVA table
+# set.caption("RMANOVA for Portal")
+# pander(anova(cell.rm))
+
+# # Use `lsmeans` package for time-corrected marginal means
+# lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
+```
+
+## RM-ANOVA on phage data  
+```{r,  message = FALSE, warning = FALSE}
+
+phage.rm <- 
+  d.decomp%>%
+  # looking only at phages
+  filter(pop=="phage.ml")%>%
+  #remove edges in which trend is NA 
+  # AND remove no-phage controls
+  filter(!is.na(trend))%>%
+  lme(trend ~ seed.bank, random = ~ 1 | line, 
+            correlation = corAR1(form = ~ 1 | line),
+            data = .)
+
+# Look at detailed output
+summary(phage.rm) 
+
+# Obtain F-test
+anova(phage.rm)
+
+# # Make cleaner ANOVA table
+# set.caption("RMANOVA for Portal")
+# pander(anova(cell.rm))
+
+# # Use `lsmeans` package for time-corrected marginal means
+# lsmeans(phage.rm, ~seed.bank) %>% plot()+theme_cowplot()
+```
+
+
+# Phase Plane w. trend data
+
+```{r, echo=FALSE}
+# Phase plane plots
+d.decomp %>%
+   filter(Time>=0)%>%
+select(Time,culture,line,pop,trend)%>%
+  filter(pop=="cell.ml" | pop=="phage.ml")%>%
+  pivot_wider(values_from = trend, names_from=pop)%>%
+  filter(!is.na(phage.ml))%>%
+ggplot( aes(x=log10(cell.ml), y=log10(phage.ml) ,colour=Time)) +
+  geom_path(arrow = arrow(type = "closed", angle = 15, length = unit(0.1, "inches"))) +
+  facet_grid(line~culture)+#, scales = "free") +
+  xlab("Host (log10)") + ylab("Phage (log10)") +
+  theme_cowplot()+
+   panel_border()+
+   scale_color_viridis_c()+
+   ggtitle("Decomposed trend")
+
+```
+
+
+```{r animate, eval=FALSE}
+library(gganimate)
+library(gifski)
+
+
+# Phase plane plots
+
+p.anim <- 
+d.decomp %>%
+   filter(Time>=0)%>%
+select(Time,culture,line,pop,trend)%>%
+  filter(pop=="cell.ml" | pop=="phage.ml")%>%
+  pivot_wider(values_from = trend, names_from=pop)%>%
+  filter(!is.na(phage.ml))%>%
+ggplot( aes(x=log10(cell.ml), y=log10(phage.ml) ,colour=Time)) +
+  geom_path(arrow = arrow(type = "closed", angle = 15, length = unit(0.1, "inches"))) +
+  facet_grid(line~culture, scales = "free") +
+  xlab("Host (log10)") + ylab("Phage (log10)") +
+  theme_cowplot()+
+   panel_border()+
+   scale_color_viridis_c()+
+   transition_reveal(Time)+
+   ggtitle(label = "All time points", subtitle = "Time {frame_along}")
+
+animate(p.anim, duration = 15, fps = 10,  renderer =gifski_renderer())
+anim_save(here("plots","phase_plane_all.gif"))
 ```
