@@ -107,6 +107,24 @@ d.decomp <- d.decomp[-1,]
 #delete temporary variables
 rm(tmp,cult,ln,pop)
 
+#add columns on host strain,phage treatment and seed bank as encoded in culture name
+d.decomp <- 
+   d.decomp%>%
+   mutate(host=case_when(grepl("W", culture) ~ "WT",
+                         grepl("SN", culture) ~ "dSpoIIE",
+                         grepl("dS", culture) ~ "dSpoIIE"))%>%
+  
+  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
+                         grepl("Ct", culture) ~ "no_Phage",
+                         grepl("ANC", line) ~ "no_Phage")%>%
+  
+  mutate(seed.bank=case_when(grepl("SN", culture) ~ "none",
+                              grepl("WS", culture) ~ "short",
+                              grepl("WL", culture) ~ "long"))%>%
+   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+  #add flask to be used as grouping variable
+  mutate(flask=paste(culture,line, sep = "-"))%>%
+
 ```
 
 
@@ -168,6 +186,24 @@ d.decomp%>%
   ylab("cell/ml (trend)")
   
 ```
+
+```{r}
+d.decomp%>%
+  #remove edges fr which trend is NA
+  filter(!is.na(trend))%>%
+  # looking only at cells by type
+  filter(pop=="spore.ml" | pop=="veg.ml")%>%
+  ggplot(aes(x=Time, y=trend))+
+  geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+  facet_grid(pop~phage)+
+  theme_cowplot()+
+  panel_border()+
+  scale_y_log10()+
+  theme(legend.position = "bottom")+
+  ylab("cell/ml (trend)")
+  
+```
+
 
 # Phase Plane w. trend data
 
