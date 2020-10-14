@@ -43,6 +43,30 @@ I have previously consolidated all the data on population density collected for 
 
 ```{r load data, include=FALSE}
 d <- read_csv(here("data","coevolution_pop_density.csv"))
+
+# plot total cells of raw data
+d%>%
+  filter(Time>=0)%>%
+  #add columns on phage and seed bank treatments as encoded in culture name
+    mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
+                         grepl("Ct", culture) ~ "no_Phage",
+                         grepl("ANC", line) ~ "no_Phage"))%>%
+  
+    mutate(seed.bank=case_when(grepl("SN", culture) ~ "none",
+                              grepl("WS", culture) ~ "short",
+                              grepl("WL", culture) ~ "long"))%>%
+  
+      #add flask to be used as grouping variable
+  mutate(flask=paste(culture,line, sep = "-"))%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+  geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+  facet_wrap(~phage)+
+  theme_cowplot()+
+  panel_border()+
+  scale_y_log10()+
+  theme(legend.position = "bottom")+
+  ylab("cell/ml (log)")+
+  coord_cartesian(ylim = c(1e5, 1e9))
 ```
 
 ### Decomposition of the time series  
@@ -50,6 +74,26 @@ From QB handout on temporal diversity:
 
 > A time series can be broken down into different "categories", which can provide insight into factors contributing to temporal patterns.   
 The common categories of a time series decomposition are the trend (i.e., increasing or decreasing value in the series), seasonality (repeating short-term cycles), and residual error (i.e., statistical noise due to stochastic changes or sampling error).  
+
+First let's look at decomposition of a single sample (WSO-L1), looking at total cells (log-transformed)
+
+```{r, echo=FALSE}
+
+    d%>%
+  filter(Time>=0)%>%
+  filter(culture=="WSO")%>%
+  filter(line=="L1")%>%
+  mutate(cell.ml=log10(cell.ml))%>%
+  select(cell.ml)%>%
+ts(.[,"cell.ml"], start=0, end=14,frequency = 2 )%>%
+  decompose()%>%
+  plot()
+
+```
+
+The decompisition removes the bi-daily fluctuations (season component) and reveals 2 population cycles in the first week, followed by a steady rise in the second week.
+
+Next let's decompose in the same manner all of the data.
 
 ```{r, include=FALSE}
 # initailise tibble for collecting decompsed data
@@ -135,36 +179,8 @@ d.decomp <-
 
 ### Plot decomposed trend data
 
-```{r}
-d.decomp%>%
-  filter(!is.na(trend))%>%
-  filter(pop!="cell.ml")%>%
-  ggplot(aes(x=Time, y=trend))+
-  geom_line(aes(color=pop), size=1)+
-  facet_grid(line~culture)+
-  theme_cowplot()+
-  panel_border()+
-  scale_y_log10()+
-  theme(legend.position = "bottom")
-  
-```
-
-```{r}
-d.decomp%>%
-  filter(!is.na(trend))%>%
-  filter(pop=="cell.ml" | pop=="phage.ml")%>%
-  ggplot(aes(x=Time, y=trend))+
-  geom_line(aes(color=pop), size=1)+
-  facet_grid(line~culture)+
-  theme_cowplot()+
-  panel_border()+
-  scale_y_log10()+
-  theme(legend.position = "bottom")
-  
-```
-
-Plot by treatment
-```{r}
+Plot by treatment, as above.  
+```{r,echo=FALSE}
 d.decomp%>%
   #remove edges in which trend is NA
   filter(!is.na(trend))%>%
@@ -180,6 +196,41 @@ d.decomp%>%
   ylab("cell/ml (trend)")
   
 ```
+
+The patterns are somewhat clearer. Especially obvious is the differences between WT (long and short seed bank) and SPOIIE (no seed bank) in the frst week when infected with phage. The 3 lines with the non-sporulating mutant all have simmilar looking cycles. 
+
+And now adding to total cells also the phages.  
+
+```{r}
+d.decomp%>%
+  filter(!is.na(trend))%>%
+  filter(pop=="cell.ml" | pop=="phage.ml")%>%
+  ggplot(aes(x=Time, y=trend))+
+  geom_line(aes(color=pop), size=1)+
+  facet_grid(line~culture)+
+  theme_cowplot()+
+  panel_border()+
+  scale_y_log10()+
+  theme(legend.position = "bottom")
+```
+
+Next plotting all the decomposed trend data: spores, veg and phages. 
+```{r}
+d.decomp%>%
+  filter(!is.na(trend))%>%
+  filter(pop!="cell.ml")%>%
+  ggplot(aes(x=Time, y=trend))+
+  geom_line(aes(color=pop), size=1)+
+  facet_grid(line~culture)+
+  theme_cowplot()+
+  panel_border()+
+  scale_y_log10()+
+  theme(legend.position = "bottom")
+  
+```
+
+
+Finally pulling together spore and veg data from the 3 seed bank treatments:
 
 ```{r}
 d.decomp%>%
@@ -197,9 +248,6 @@ d.decomp%>%
   ylab("cell/ml (trend)")
   
 ```
-
-
-
 
 
 # Stability
