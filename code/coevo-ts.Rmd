@@ -385,6 +385,7 @@ aov_stab <-
 summary(aov_stab)
 ```
 
+<<<<<<< HEAD
 Yes, there is! Post-hoc:
 
 ```{r}
@@ -397,7 +398,16 @@ TukeyHSD(aov_stab)%>%plot(col="blue")
 
 The difference in stability is driven by a significant difference in stability between the long-residence seed-bank and the no seed-bank treatments. the short-residence seed-bank is not significantly distinguishable from either of the other treatments.
 
+=======
+Post-hoc
+```{r}
+TukeyHSD(aov_stab)
 
+TukeyHSD(aov_stab)%>%plot(col="blue")
+```
+>>>>>>> 6660c1ff2c98b9d63d8a5723fbdc37c956c44eca
+
+The difference in stability is driven by a significant difference in stability between the long-residence seed-bank and the no seed-bank treatments. the short-residence seed-bank is not significantly distinguishable from either of the other treatments.
 # Repeated-Measures Analysis-of-Variance (RM-ANOVA)
 
 *Following QB module*
