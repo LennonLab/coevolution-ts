@@ -34,14 +34,14 @@ par.default <- par()
 ## Population density data  
 I have previously consolidated all the data on population density collected for this experiment. This includes:
 
-| Population | What it is | Method of measurment |
+| Population | What it is | Method of measurement |
 | - | - | - |
 |spore / mL | host spore density | flow-cytometry: low SYBR population |
 |veg / mL | host vegetative cell density | flow-cytometry: high SYBR population |
 | cell /mL | total host cell density (spore+veg) | flow-cytometry
 | phage/ mL | total SPO1 phage density (free phage) | qPCR (SYBR)  with phage specific primers and lysate serial dilution as standard | 
 
-```{r load data, include=FALSE}
+```{r load data, echo=FALSE}
 d <- read_csv(here("data","coevolution_pop_density.csv"))
 
 # plot total cells of raw data
@@ -91,7 +91,7 @@ ts(.[,"cell.ml"], start=0, end=14,frequency = 2 )%>%
 
 ```
 
-The decompisition removes the bi-daily fluctuations (season component) and reveals 2 population cycles in the first week, followed by a steady rise in the second week.
+The decomposition removes the bi-daily fluctuations (season component) and reveals 2 population cycles in the first week, followed by a steady rise in the second week.
 
 Next let's decompose in the same manner all of the data.
 
@@ -197,7 +197,7 @@ d.decomp%>%
   
 ```
 
-The patterns are somewhat clearer. Especially obvious is the differences between WT (long and short seed bank) and SPOIIE (no seed bank) in the frst week when infected with phage. The 3 lines with the non-sporulating mutant all have simmilar looking cycles. 
+The patterns are somewhat clearer. Especially obvious is the differences between WT (long and short seed bank) and SPOIIE (no seed bank) in the first week when infected with phage. The 3 lines with the non-sporulating mutant all have similar looking cycles. 
 
 And now adding to total cells also the phages.  
 
@@ -318,6 +318,8 @@ cell.stab%>%
   ggtitle("decomposed trend data on total cell density")
 ```
 
+In the presence of phage, the presence of a seed bank stabilizes the host population!!
+
 Now the same analysis with the observed data
 
 ```{r, echo=F}
@@ -372,6 +374,28 @@ cell.stab%>%
   theme_cowplot()+
   ggtitle("Observed data on total cell density")
 ```
+
+Exactly the same. Is there statistical support for seed bank stability?
+
+```{r stability stats}
+aov_stab <- 
+  aov(stability~seed.bank, 
+    data = filter(cell.stab, phage=="SPO1"))
+  
+summary(aov_stab)
+```
+
+Yes, there is! Post-hoc:
+
+```{r}
+TukeyHSD(aov_stab)
+```
+
+```{r}
+TukeyHSD(aov_stab)%>%plot(col="blue")
+```
+
+The difference in stability is driven by a significant difference in stability between the long-residence seed-bank and the no seed-bank treatments. the short-residence seed-bank is not significantly distinguishable from either of the other treatments.
 
 
 # Repeated-Measures Analysis-of-Variance (RM-ANOVA)
