@@ -1,0 +1,83 @@
+---
+title: "Coevolution with a seed bank: population density"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+```{r setup, include=FALSE}
+library(renv)
+# # Initialize lock file when first setting repo
+# renv::init()
+
+library(here)
+# # set root at project file ("coevolution-ts"). 
+# # Done once at initial setup.
+# here::set_here()
+
+library(tidyverse)
+library(cowplot)
+
+library(tsibble)
+library(feasts)
+# save the state of the project library to the lockfile (called renv.lock),
+renv::snapshot()
+
+# save default par for base graphics
+par.default <- par()
+```
+
+## Population density data  
+I have previously consolidated all the data on population density collected for this experiment. This includes:
+
+| Population | What it is | Method of measurment |
+| - | - | - |
+|spore / mL | host spore density | flow-cytometry: low SYBR population |
+|veg / mL | host vegetative cell density | flow-cytometry: high SYBR population |
+| cell /mL | total host cell density (spore+veg) | flow-cytometry
+| phage/ mL | total SPO1 phage density (free phage) | qPCR (SYBR)  with phage specific primers and lysate serial dilution as standard | 
+
+```{r load data, include=FALSE}
+d <- read_csv(here("data","coevolution_pop_density.csv"))
+```
+
+### Decomposition of the time series  
+From QB handout on temporal diversity: 
+
+> A time series can be broken down into different "categories", which can provide insight into factors contributing to temporal patterns.   
+The common categories of a time series decomposition are the trend (i.e., increasing or decreasing value in the series), seasonality (repeating short-term cycles), and residual error (i.e., statistical noise due to stochastic changes or sampling error).  
+
+```{r, include=FALSE}
+
+for (ln in levels(as.factor(d$line))){
+  for (cult in levels(as.factor(d$culture))){
+    for (pop in c("phage.ml","spore.ml","veg.ml","cell.ml")){
+      
+  #not all the lines have measurments of all the populations:
+        #Ct lines have no phage
+        #SN lines have no spores
+  # the loop skips those combinations
+      if (grepl("SN",cult) & pop=="spore.ml")
+        next
+      
+      if (grepl("Ct",cult) & pop=="phage.ml")
+        next
+      
+      d%>%
+  filter(Time>=0)%>%
+  filter(culture==cult)%>%
+  filter(line==ln)%>%
+  select(all_of(pop))%>%
+ts(.[,pop], start=0, end=14,frequency = 2 )%>%
+  decompose()%>%
+  plot()
+      
+    }
+
+  }
+
+}
+
+```
+
