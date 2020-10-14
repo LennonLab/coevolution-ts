@@ -140,6 +140,34 @@ d.decomp%>%
   
 ```
 
+Plot by treatment
+```{r}
+d.decomp%>%
+  #add columns on phage treatment and seed bank
+  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
+                         grepl("Ct", culture) ~ "no_Phage",
+                         grepl("ANC", line) ~ "no_Phage",
+                         grepl("blank", culture) ~ "blank"))%>%
+  mutate(seed.bank=case_when(grepl("SN", culture) ~ "none",
+                              grepl("WS", culture) ~ "short",
+                              grepl("WL", culture) ~ "long"))%>%
+   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+  #add flask to be used as grouping variable
+  mutate(flask=paste(culture,line, sep = "-"))%>%
+  #remove edges fr which trend is NA
+  filter(!is.na(trend))%>%
+  # looking only at total cells
+  filter(pop=="cell.ml")%>%
+  ggplot(aes(x=Time, y=trend))+
+  geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+  facet_wrap(~phage)+
+  theme_cowplot()+
+  panel_border()+
+  scale_y_log10()+
+  theme(legend.position = "bottom")
+  
+```
+
 # Phase Plane w. trend data
 
 ```{r, echo=FALSE}
@@ -186,6 +214,11 @@ ggplot( aes(x=log10(cell.ml), y=log10(phage.ml) ,colour=Time)) +
    transition_reveal(Time)+
    ggtitle(label = "All time points", subtitle = "Time {frame_along}")
 
-animate(p.anim, duration = 30, fps = 10,  renderer =gifski_renderer())
+animate(p.anim, duration = 15, fps = 10,  renderer =gifski_renderer())
 anim_save(here("plots","phase_plane_all.gif"))
 ```
+
+# Repeated-Measures Analysis-of-Variance (RM-ANOVA)
+
+*Following QB module*
+
