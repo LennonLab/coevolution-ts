@@ -19,6 +19,10 @@ library(here)
 library(tidyverse)
 library(cowplot)
 
+library(nlme)
+library(pander)
+library(emmeans)
+
 # save the state of the project library to the lockfile (called renv.lock),
 renv::snapshot()
 
@@ -116,14 +120,14 @@ d.decomp <-
   
   mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
                          grepl("Ct", culture) ~ "no_Phage",
-                         grepl("ANC", line) ~ "no_Phage")%>%
+                         grepl("ANC", line) ~ "no_Phage"))%>%
   
   mutate(seed.bank=case_when(grepl("SN", culture) ~ "none",
                               grepl("WS", culture) ~ "short",
                               grepl("WL", culture) ~ "long"))%>%
    mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
   #add flask to be used as grouping variable
-  mutate(flask=paste(culture,line, sep = "-"))%>%
+  mutate(flask=paste(culture,line, sep = "-"))
 
 ```
 
@@ -161,18 +165,7 @@ d.decomp%>%
 Plot by treatment
 ```{r}
 d.decomp%>%
-  #add columns on phage treatment and seed bank
-  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
-                         grepl("Ct", culture) ~ "no_Phage",
-                         grepl("ANC", line) ~ "no_Phage",
-                         grepl("blank", culture) ~ "blank"))%>%
-  mutate(seed.bank=case_when(grepl("SN", culture) ~ "none",
-                              grepl("WS", culture) ~ "short",
-                              grepl("WL", culture) ~ "long"))%>%
-   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
-  #add flask to be used as grouping variable
-  mutate(flask=paste(culture,line, sep = "-"))%>%
-  #remove edges fr which trend is NA
+  #remove edges in which trend is NA
   filter(!is.na(trend))%>%
   # looking only at total cells
   filter(pop=="cell.ml")%>%
@@ -189,7 +182,7 @@ d.decomp%>%
 
 ```{r}
 d.decomp%>%
-  #remove edges fr which trend is NA
+  #remove edges in which trend is NA
   filter(!is.na(trend))%>%
   # looking only at cells by type
   filter(pop=="spore.ml" | pop=="veg.ml")%>%
@@ -226,8 +219,8 @@ ggplot( aes(x=log10(cell.ml), y=log10(phage.ml) ,colour=Time)) +
 
 ```
 
-# animate
-```{r, include=FALSE}
+
+```{r animte, eval=FALSE}
 library(gganimate)
 library(gifski)
 
@@ -259,3 +252,28 @@ anim_save(here("plots","phase_plane_all.gif"))
 
 *Following QB module*
 
+```{r,  message = FALSE, warning = FALSE}
+
+cell.rm <- 
+  d.decomp%>%
+  #remove edges in which trend is NA
+  filter(!is.na(trend))%>%
+  # looking only at total cells
+  filter(pop=="cell.ml")%>%
+  lme(trend ~ phage * seed.bank, random = ~ 1 | line, 
+            correlation = corAR1(form = ~ 1 | line),
+            data = .)
+
+# Look at detailed output
+summary(cell.rm) 
+
+# Obtain F-test
+anova(cell.rm)
+
+# # Make cleaner ANOVA table
+# set.caption("RMANOVA for Portal")
+# pander(anova(cell.rm))
+
+# Use `lsmeans` package for time-corrected marginal means
+lsmeans(cell.rm, ~seed.bank+phage) 
+```
