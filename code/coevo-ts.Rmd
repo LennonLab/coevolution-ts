@@ -441,19 +441,18 @@ anova(cell.rm)
 
 cell.rm.obs <- 
   d%>%
-  #remove edges in which trend is NA
-  filter(!is.na(trend))%>%
-  # looking only at total cells
-  filter(pop=="cell.ml")%>%
-  lme(trend ~ phage * seed.bank, random = ~ 1 | line, 
+  #remove setup data
+  filter(Time>=0)%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank, random = ~ 1 | line, 
             correlation = corAR1(form = ~ 1 | line),
             data = .)
 
 # Look at detailed output
-summary(cell.rm) 
+summary(cell.rm.obs) 
 
 # Obtain F-test
-anova(cell.rm)
+anova(cell.rm.obs)
 
 # # Make cleaner ANOVA table
 # set.caption("RMANOVA for Portal")
