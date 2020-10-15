@@ -414,13 +414,15 @@ The difference in stability is driven by a significant difference in stability b
 
 cell.rm <- 
   d.decomp%>%
-  #remove edges in which trend is NA
-  filter(!is.na(trend))%>%
   # looking only at total cells
   filter(pop=="cell.ml")%>%
-  lme(trend ~ phage * seed.bank, random = ~ 1 | line, 
+  arrange(seed.bank)%>%
+  as.data.frame()%>%
+  lme(trend ~ phage * seed.bank*Time, random = ~ 1 | line, 
             correlation = corAR1(form = ~ 1 | line),
-            data = .)
+            data = .,
+      #remove edges in which trend is NA
+      na.action = "na.omit")
 
 # Look at detailed output
 summary(cell.rm) 
@@ -441,11 +443,11 @@ anova(cell.rm)
 
 cell.rm.obs <- 
   d%>%
-  #remove setup data
+  # remove setup data
   filter(Time>=0)%>%
   # looking only at total cells (cell.ml)
-    lme(cell.ml ~ phage * seed.bank, random = ~ 1 | line, 
-            correlation = corAR1(form = ~ 1 | line),
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ 1|flask),
             data = .)
 
 # Look at detailed output
@@ -460,6 +462,50 @@ anova(cell.rm.obs)
 
 # # Use `lsmeans` package for time-corrected marginal means
 # lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
+```
+
+Compare raw and observed data
+```{r}
+tmp.obs<- 
+  d.decomp%>%
+  # looking only at total cells
+  filter(pop=="cell.ml")%>%
+  select(Time,phage, seed.bank,line, observed, trend)
+
+tmp.raw <- 
+  d%>%
+  filter(Time>=0)%>%
+  select(Time,phage, seed.bank,line,raw=cell.ml)
+
+tmp.both <- 
+full_join(tmp.raw,tmp.obs,by = c("Time", "phage", "seed.bank", "line"))%>%
+  mutate(dif=raw-observed)%>%
+  arrange(Time)
+  as.data.frame()
+
+tmp.both%>%
+  filter(dif!=0)
+
+```
+There is no difference at all!!
+
+```{r}
+lme(raw ~ phage * seed.bank*Time, random = ~ 1 | line, 
+            correlation = corAR1(form = ~ 1 | line),
+            data = tmp.both)%>%
+  anova(.)
+
+lme(observed ~ phage * seed.bank*Time, random = ~ 1 | line, 
+            correlation = corAR1(form = ~ 1 | line),
+            data = tmp.both)%>%
+  anova(.)
+
+lme(trend ~ phage * seed.bank*Time, random = ~ 1 | line, 
+            correlation = corAR1(form = ~ 1 | line),
+            data = tmp.both, na.action = "na.omit")%>%
+  anova(.)
+
+
 ```
 
 ## RM-ANOVA on decomposed trend phage data  
