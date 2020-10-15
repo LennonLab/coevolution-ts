@@ -46,29 +46,33 @@ I have previously consolidated all the data on population density collected for 
 ```{r load data, echo=FALSE}
 d <- read_csv(here("data","coevolution_pop_density.csv"))
 
+#add columns on host strain and phage treatment  as encoded in culture name
+d <- 
+  d%>%
+   mutate(host=case_when(grepl("W", culture) ~ "WT",
+                         grepl("SN", culture) ~ "dSpoIIE",
+                         grepl("dS", culture) ~ "dSpoIIE"))%>%
+  
+  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
+                         grepl("Ct", culture) ~ "no_Phage",
+                         grepl("ANC", line) ~ "no_Phage"))%>%
+
+   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+  #add flask to be used as grouping variable
+  mutate(flask=paste(culture,line, sep = "-"))
+
 # plot total cells of raw data
 d%>%
   filter(Time>=0)%>%
-  #add columns on phage and seed bank treatments as encoded in culture name
-    mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
-                         grepl("Ct", culture) ~ "no_Phage",
-                         grepl("ANC", line) ~ "no_Phage"))%>%
-  
-    mutate(seed.bank=case_when(grepl("SN", culture) ~ "none",
-                              grepl("WS", culture) ~ "short",
-                              grepl("WL", culture) ~ "long"))%>%
-  
-      #add flask to be used as grouping variable
-  mutate(flask=paste(culture,line, sep = "-"))%>%
     ggplot(aes(x=Time, y=cell.ml))+
-  geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
-  facet_wrap(~phage)+
-  theme_cowplot()+
-  panel_border()+
-  scale_y_log10()+
-  theme(legend.position = "bottom")+
-  ylab("cell/ml (log)")+
-  coord_cartesian(ylim = c(1e5, 1e9))
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_wrap(~phage)+
+      theme_cowplot()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom")+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e9))
 ```
 
 ### Decomposition of the time series  
@@ -410,6 +414,33 @@ The difference in stability is driven by a significant difference in stability b
 
 cell.rm <- 
   d.decomp%>%
+  #remove edges in which trend is NA
+  filter(!is.na(trend))%>%
+  # looking only at total cells
+  filter(pop=="cell.ml")%>%
+  lme(trend ~ phage * seed.bank, random = ~ 1 | line, 
+            correlation = corAR1(form = ~ 1 | line),
+            data = .)
+
+# Look at detailed output
+summary(cell.rm) 
+
+# Obtain F-test
+anova(cell.rm)
+
+# # Make cleaner ANOVA table
+# set.caption("RMANOVA for Portal")
+# pander(anova(cell.rm))
+
+# # Use `lsmeans` package for time-corrected marginal means
+# lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
+```
+
+## RM-ANOVA on measured total cell data 
+```{r,  message = FALSE, warning = FALSE}
+
+cell.rm.obs <- 
+  d%>%
   #remove edges in which trend is NA
   filter(!is.na(trend))%>%
   # looking only at total cells
