@@ -25,6 +25,7 @@ library(nlme)
 library(pander)
 library(emmeans)
 library(codyn)
+library(smooth)
 
 # save the state of the project library to the lockfile (called renv.lock),
 renv::snapshot()
@@ -412,27 +413,21 @@ The difference in stability is driven by a significant difference in stability b
 ## RM-ANOVA on decomposed trend total cell data  
 ```{r,  message = FALSE, warning = FALSE}
 
-cell.rm <- 
+cell.rm.decomp <- 
   d.decomp%>%
   # looking only at total cells
   filter(pop=="cell.ml")%>%
-  arrange(seed.bank)%>%
-  as.data.frame()%>%
-  lme(trend ~ phage * seed.bank*Time, random = ~ 1 | line, 
-            correlation = corAR1(form = ~ 1 | line),
+  lme(trend ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ 1|flask),
             data = .,
       #remove edges in which trend is NA
       na.action = "na.omit")
 
 # Look at detailed output
-summary(cell.rm) 
+summary(cell.rm.decomp) 
 
 # Obtain F-test
-anova(cell.rm)
-
-# # Make cleaner ANOVA table
-# set.caption("RMANOVA for Portal")
-# pander(anova(cell.rm))
+anova(cell.rm.decomp)
 
 # # Use `lsmeans` package for time-corrected marginal means
 # lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
@@ -456,84 +451,264 @@ summary(cell.rm.obs)
 # Obtain F-test
 anova(cell.rm.obs)
 
-# # Make cleaner ANOVA table
-# set.caption("RMANOVA for Portal")
-# pander(anova(cell.rm))
-
 # # Use `lsmeans` package for time-corrected marginal means
 # lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
 ```
 
-Compare raw and observed data
-```{r}
-tmp.obs<- 
-  d.decomp%>%
-  # looking only at total cells
-  filter(pop=="cell.ml")%>%
-  select(Time,phage, seed.bank,line, observed, trend)
+### RM-ANOVA covariance model selection
 
-tmp.raw <- 
-  d%>%
+Form Jay:  
+
+> Covariance structures I typically consider with rm-anova are compound symmetry (cs), autoregressive (ar[x]), unstructured (un), Huynh-Feldt (hf).  
+
+
+#### acf and pacf
+
+ACF is used to find the q order of a moving average model, MA(q). Q will be the lag beyond which ACF is indistiguishible from 0, i.e. fall within the error lines on the ACF plot.
+```{r acf}
+cur.sample <- "SNCt-L2"
+
+ d%>%
+  # remove setup data
   filter(Time>=0)%>%
-  select(Time,phage, seed.bank,line,raw=cell.ml)
+    filter(flask==cur.sample)%>%
+    arrange(Time)%>%
+    select(cell.ml)%>%
+  # as_vector()%>%
+  acf()
 
-tmp.both <- 
-full_join(tmp.raw,tmp.obs,by = c("Time", "phage", "seed.bank", "line"))%>%
-  mutate(dif=raw-observed)%>%
-  arrange(Time)
-  as.data.frame()
-
-tmp.both%>%
-  filter(dif!=0)
 
 ```
-There is no difference at all!!
+
+PACF, partial ACF, is used to find p, the order of a auto-regeressive model, AR(p). P will consist of lags with non-zero PACF values. i.e. bars extending beyond the error lines in the plot.
+
+```{r pacf}
+ d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+    filter(flask==cur.sample)%>%
+    arrange(Time)%>%
+    select(cell.ml)%>%
+  as_vector()%>%
+  pacf()
+
+```
 
 ```{r}
-lme(raw ~ phage * seed.bank*Time, random = ~ 1 | line, 
-            correlation = corAR1(form = ~ 1 | line),
-            data = tmp.both)%>%
-  anova(.)
+pq <- tibble(flask=unique(d$flask), ar.p=NA, ma.q=NA)
 
-lme(observed ~ phage * seed.bank*Time, random = ~ 1 | line, 
-            correlation = corAR1(form = ~ 1 | line),
-            data = tmp.both)%>%
-  anova(.)
+for (i in 1:nrow(pq)){
+  flask.i <- pq$flask[i]
+  
+  q.i <- 
+    d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+    filter(flask==flask.i)%>%
+    select(cell.ml)%>%
+  as_vector()%>%
+   sma()
+   
+  pq$ma.q[i] <- parse_number(q.i$model)
+ 
+  p.i <- 
+   d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+    filter(flask==flask.i)%>%
+   select(cell.ml)%>%
+  as_vector()%>%
+   ar()
+  
+  pq$ar.p[i] <-  p.i$order
+ 
+}
 
-lme(trend ~ phage * seed.bank*Time, random = ~ 1 | line, 
-            correlation = corAR1(form = ~ 1 | line),
-            data = tmp.both, na.action = "na.omit")%>%
-  anova(.)
+pq%>%
+  pivot_longer(-flask,names_to="param")%>%
+  separate(flask,sep = "-", into = c("culture","line"), remove = FALSE)%>%
+  mutate(phage=if_else(str_detect(flask,"O"),"SPO1","noPhage"))%>%
+    ggplot(aes(x=culture,y=value))+
+  geom_jitter( width=0.1, height = 0.1, shape=21, fill="white", size=2)+
+  facet_grid(phage~param, scales = "free")+
+  theme_minimal_vgrid()+
+  scale_y_continuous(breaks=1:10)+
+  panel_border()+
+  coord_flip()
+  
 
-
+  
 ```
 
-## RM-ANOVA on decomposed trend phage data  
-```{r,  message = FALSE, warning = FALSE}
 
-phage.rm <- 
-  d.decomp%>%
-  # looking only at phages
-  filter(pop=="phage.ml")%>%
-  #remove edges in which trend is NA 
-  # AND remove no-phage controls
-  filter(!is.na(trend))%>%
-  lme(trend ~ seed.bank, random = ~ 1 | line, 
-            correlation = corAR1(form = ~ 1 | line),
+#### Model selection  
+
+```{r, message = FALSE, warning = FALSE}
+# corAR1
+cell.rm.AR1 <- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ Time | flask),
             data = .)
 
+# # Compound Symmetry -> does not fit the time structure IMHO
+# cell.rm.CompSymm <- 
+#   d%>%
+#   # remove setup data
+#   filter(Time>=0)%>%
+#   # looking only at total cells (cell.ml)
+#     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+#             correlation = corCompSymm(form = ~ Time | flask),
+#             data = .)
+
+# # General Correlation Structure (=unstructured?)
+# cell.rm.Symm <-
+#   d%>%
+#   # remove setup data
+#   filter(Time>=0)%>%
+#   # The covariate structure requires a sequence of consecutive integers
+#   mutate(Time=as.integer(2*Time))%>%
+#   mutate(flask=as.integer(as_factor(flask)))%>%
+#   arrange(flask,Time)%>%
+#   # looking only at total cells (cell.ml)
+#     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask,
+#             correlation = corSymm(form = ~ Time | flask),
+#             data = .)
+#   # nlminb problem, convergence error code = 1
+#   # message = iteration limit reached without convergence (10)
+
+# # Spherical Correlation Structure (=Huynh-Feldt?) => spatial??
+# cell.rm.Spher<- 
+#   d%>%
+#   # remove setup data
+#   filter(Time>=0)%>%
+#   # looking only at total cells (cell.ml)
+#     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+#             correlation = corSpher(form = ~ Time | flask),
+#             data = .)
+
+# ARMA
+cell.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask, p=2,q=1),
+            data = .)
+
+AIC(cell.rm.AR1,cell.rm.ARMA )%>%arrange(AIC)
+# 
+anova(cell.rm.AR1,cell.rm.ARMA)
+
+```
+
+
+Selecting the model with ARMA covariance. 
+```{r, message = FALSE, warning = FALSE}
+
+
 # Look at detailed output
-summary(phage.rm) 
+summary(cell.rm.ARMA) 
 
 # Obtain F-test
-anova(phage.rm)
+anova(cell.rm.ARMA)
+```
 
-# # Make cleaner ANOVA table
-# set.caption("RMANOVA for Portal")
-# pander(anova(cell.rm))
+The differences in models was not great, so let's look also at the AR1 model:  
+```{r, message = FALSE, warning = FALSE}
 
-# # Use `lsmeans` package for time-corrected marginal means
-# lsmeans(phage.rm, ~seed.bank) %>% plot()+theme_cowplot()
+
+# Look at detailed output
+summary(cell.rm.AR1) 
+
+# Obtain F-test
+anova(cell.rm.AR1)
+```
+
+Significant effect of seed bank on cell density. No interaction with phage.
+
+
+## RM-ANOVA on  phage data  
+#### Model selection  
+
+```{r, message = FALSE, warning = FALSE}
+# corAR1
+phage.rm.AR1 <- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total phages (phage.ml)
+  filter(phage=="SPO1")%>%
+    lme(phage.ml ~  seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ 1|flask),
+            data = .)
+
+# Compound Symmetry 
+phage.rm.CompSymm <- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total phages (phage.ml)
+  filter(phage=="SPO1")%>%
+    lme(phage.ml ~  seed.bank * Time , random = ~1|flask, 
+            correlation = corCompSymm(form = ~ 1|flask),
+            data = .)
+
+# # General Correlation Structure (=unstructured?)
+# phage.rm.Symm <- 
+#   d%>%
+#   # remove setup data
+#   filter(Time>=0)%>%
+#   # looking only at total phages (phage.ml)
+#     filter(phage=="SPO1")%>%
+#     lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+#             correlation = corSymm(form = ~ 1|flask),
+#             data = .)
+#   # nlminb problem, convergence error code = 1
+#   # message = iteration limit reached without convergence (10)
+
+# Spherical Correlation Structure (=Huynh-Feldt?)
+phage.rm.Spher<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total phages (phage.ml)
+  filter(phage=="SPO1")%>%
+    lme(phage.ml ~  seed.bank * Time , random = ~1|flask, 
+            correlation = corSpher(form = ~ 1|flask),
+            data = .)
+
+# ARMA
+phage.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total phages (phage.ml)
+  filter(phage=="SPO1")%>%
+    lme(phage.ml ~  seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1|flask, p=2,q=2),
+            data = .)
+
+AIC(phage.rm.AR1,phage.rm.CompSymm,phage.rm.Spher,phage.rm.ARMA )
+# 
+anova(phage.rm.AR1,phage.rm.ARMA)
+
+```
+
+
+Selecting the model with ARMA covariance. 
+```{r, message = FALSE, warning = FALSE}
+
+
+# Look at detailed output
+summary(phage.rm.ARMA) 
+
+# Obtain F-test
+anova(phage.rm.ARMA)
 ```
 
 
