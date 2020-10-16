@@ -678,7 +678,7 @@ cell.rm.ARMA<-
             correlation = corARMA(form = ~ Time | flask, p=2,q=1),
             data = .)
 
-AIC(cell.rm.AR1,cell.rm.ARMA )%>%arrange(AIC)
+SAIC(cell.rm.AR1,cell.rm.ARMA )%>%arrange(AIC)
 # 
 anova(cell.rm.AR1,cell.rm.ARMA)
 
@@ -696,7 +696,7 @@ summary(cell.rm.ARMA)
 anova(cell.rm.ARMA)
 ```
 
-The differences in models was not great, so let's look also at the AR1 model:  
+The differences between the AR1 and ARMA models was not great, so let's look also at the AR1 model:  
 ```{r, message = FALSE, warning = FALSE}
 
 
@@ -789,6 +789,49 @@ summary(phage.rm.ARMA)
 anova(phage.rm.ARMA)
 ```
 
+
+veg cells?  
+```{r, message = FALSE, warning = FALSE}
+
+# ARMA
+veg.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total phages (phage.ml)
+  # filter(phage=="SPO1")%>%
+    lme(veg.ml ~  phage* seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1|flask, p=2,q=2),
+            data = .)
+
+# Look at detailed output
+summary(veg.rm.ARMA) 
+
+# Obtain F-test
+anova(veg.rm.ARMA)
+```
+
+spores?  
+```{r, message = FALSE, warning = FALSE}
+
+# ARMA
+spore.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at spores, i.e only WT
+  filter(host=="WT")%>%
+    lme(veg.ml ~  phage* seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1|flask, p=2,q=2),
+            data = .)
+
+
+# Look at detailed output
+summary(spore.rm.ARMA) 
+
+# Obtain F-test
+anova(spore.rm.ARMA)
+```
 
 # Phase Plane w. decomposed trend data
 
