@@ -82,7 +82,9 @@ From QB handout on temporal diversity:
 > A time series can be broken down into different "categories", which can provide insight into factors contributing to temporal patterns.   
 The common categories of a time series decomposition are the trend (i.e., increasing or decreasing value in the series), seasonality (repeating short-term cycles), and residual error (i.e., statistical noise due to stochastic changes or sampling error).  
 
+
 First let's look at decomposition of a single sample (WSO-L1), looking at total cells.
+
 
 ```{r, echo=FALSE}
 
@@ -95,6 +97,7 @@ ts(.[,"cell.ml"], start=0, end=14,frequency = 2 )%>%
   decompose()%>%
   ggplot2::autoplot()+
   theme_bw()
+
 
 ```
 
