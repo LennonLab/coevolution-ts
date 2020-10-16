@@ -339,20 +339,21 @@ In the presence of phage, the presence of a seed bank stabilizes the host popula
 Now the same analysis with the observed data
 
 ```{r, echo=F}
-
+#make data frame of relevant data
 d.cell.stab <- 
-  d.decomp%>%
-  #remove edges in which trend is NA
-  filter(!is.na(observed))%>%
+  d%>%
+  #remove setup data
+  filter(Time>=0)%>%
   # looking only at total cells
-  filter(pop=="cell.ml")%>%
+  select(Time,flask, host, phage, seed.bank,cell.ml)%>%
   as.data.frame()
 
 cell.stab <- 
   community_stability(df = d.cell.stab,
                     time.var = "Time",
-                    abundance.var = "observed",
+                    abundance.var = "cell.ml",
                     replicate.var = "flask")
+
 
 cell.stab <- 
   cell.stab%>%
@@ -391,7 +392,9 @@ cell.stab%>%
   ggtitle("Observed data on total cell density")
 ```
 
-Exactly the same. Is there statistical support for seed bank stability?
+Almost exactly the same. Is there statistical support for seed bank stability?
+
+I will test this seperatly for w. and w/o phage
 
 ```{r stability stats}
 aov_stab <- 
@@ -401,19 +404,85 @@ aov_stab <-
 summary(aov_stab)
 ```
 
-<<<<<<< HEAD
 Yes, there is! Post-hoc:
 
-```{r}
-TukeyHSD(aov_stab)
-```
+```{r, message=F}
+tuk <- TukeyHSD(aov_stab)
 
-```{r}
-TukeyHSD(aov_stab)%>%plot(col="blue")
+tuk
+# I wrote a function to nicely plot the results of this test
+source(here("code","functions", "plot_TukeyHSD.R"))
+
+plot_TukeyHSD (tuk)
 ```
 
 The difference in stability is driven by a significant difference in stability between the long-residence seed-bank and the no seed-bank treatments. the short-residence seed-bank is not significantly distinguishable from either of the other treatments.
 
+Now in no-phage flasks:
+```{r stability stats wo phage}
+aov_stab <- 
+  aov(stability~seed.bank, 
+    data = filter(cell.stab, phage!="SPO1"))
+  
+summary(aov_stab)
+```
+
+Yes, there is! Post-hoc:
+
+```{r, message=F}
+tuk <- TukeyHSD(aov_stab)
+
+tuk
+
+
+plot_TukeyHSD (tuk)
+```
+
+once again there is a difference between no-seed-bank and one of the seed bak treatments. here it is the short. Maybe it is more of an effect of spre presence or absece than the actual seed bank treatment.
+
+### stability by host
+```{r, message=FALSE}
+#summarise
+sum.cell.stab <- 
+  cell.stab%>%
+    group_by(host,phage) %>% 
+    summarise(
+      sd = sd(stability),
+      stability = mean(stability))
+    
+    
+  # plot
+cell.stab%>%
+  ggplot(aes(x=host, y=stability))+
+  geom_crossbar(data=sum.cell.stab,
+                  aes(ymin=stability-sd, ymax=stability+sd), width=0.3)+
+  geom_dotplot(aes(fill=seed.bank),binaxis='y', stackdir='center', alpha=0.5)+
+  # geom_jitter(shape=21, fill="grey", size=2, width = 0.05, height = 0)+
+  facet_wrap(~phage, scales = "free")+
+  theme_cowplot()+
+  ggtitle("Observed data on total cell density")
+
+```
+
+```{r stability stats by host}
+aov_stab <- 
+  aov(stability~host*phage,
+          data = cell.stab)
+    # data = filter(cell.stab, phage!="SPO1"))
+  
+summary(aov_stab)
+```
+
+Yes, there is! Post-hoc:
+
+```{r, message=F}
+tuk <- TukeyHSD(aov_stab)
+
+tuk
+
+
+plot_TukeyHSD (tuk)
+```
 
 # Repeated-Measures Analysis-of-Variance (RM-ANOVA)
 
