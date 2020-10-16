@@ -44,8 +44,8 @@ I have previously consolidated all the data on population density collected for 
 | cell /mL | total host cell density (spore+veg) | flow-cytometry
 | phage/ mL | total SPO1 phage density (free phage) | qPCR (SYBR)  with phage specific primers and lysate serial dilution as standard | 
 
-```{r load data, echo=FALSE}
-d <- read_csv(here("data","coevolution_pop_density.csv"))
+```{r load data, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","coevolution_pop_density.csv"), )
 
 #add columns on host strain and phage treatment  as encoded in culture name
 d <- 
@@ -82,7 +82,7 @@ From QB handout on temporal diversity:
 > A time series can be broken down into different "categories", which can provide insight into factors contributing to temporal patterns.   
 The common categories of a time series decomposition are the trend (i.e., increasing or decreasing value in the series), seasonality (repeating short-term cycles), and residual error (i.e., statistical noise due to stochastic changes or sampling error).  
 
-First let's look at decomposition of a single sample (WSO-L1), looking at total cells (log-transformed)
+First let's look at decomposition of a single sample (WSO-L1), looking at total cells (log-transformed before decomposition, for better plotting)
 
 ```{r, echo=FALSE}
 
@@ -94,7 +94,7 @@ First let's look at decomposition of a single sample (WSO-L1), looking at total 
   select(cell.ml)%>%
 ts(.[,"cell.ml"], start=0, end=14,frequency = 2 )%>%
   decompose()%>%
-  plot()
+  ggplot2::autoplot()
 
 ```
 
@@ -137,7 +137,7 @@ for (ln in levels(as.factor(d$line))){
   select(all_of(pop))%>%
 ts(.[,pop], start=0, end=14,frequency = 2 )%>%
   decompose()
-      
+
   # get trend data
   d.decomp <- 
   tibble(Time=seq(0,14,0.5),
@@ -150,6 +150,12 @@ ts(.[,pop], start=0, end=14,frequency = 2 )%>%
          random= as.vector(tmp$random))%>%
     bind_rows(d.decomp,.)
   tmp$trend%>%as.vector()
+  
+  #plot
+    #   ggplot2::autoplot(tmp)+
+    #     theme_bw()+
+    # ggtitle(paste(cult,ln,pop))+
+    #     ggsave(filename = here("plots","deomposition",paste(pop,cult,ln,".pdf", sep = "_")),width = 8, height = 6)
   
     }
 
