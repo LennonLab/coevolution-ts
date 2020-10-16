@@ -827,7 +827,7 @@ spore.rm.ARMA<-
 
 
 # Look at detailed output
-summary(spore.rm.ARMA) 
+summary(spore.rm.ARMA)  
 
 # Obtain F-test
 anova(spore.rm.ARMA)
