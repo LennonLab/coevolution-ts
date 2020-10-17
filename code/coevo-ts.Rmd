@@ -496,7 +496,7 @@ cell.rm.decomp <-
   # looking only at total cells
   filter(pop=="cell.ml")%>%
   lme(trend ~ phage * seed.bank * Time , random = ~1|flask, 
-            correlation = corAR1(form = ~ 1|flask),
+            correlation = corAR1(form = ~ Time|flask),
             data = .,
       #remove edges in which trend is NA
       na.action = "na.omit")
@@ -520,14 +520,14 @@ cell.rm.obs <-
   filter(Time>=0)%>%
   # looking only at total cells (cell.ml)
     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
-            correlation = corAR1(form = ~ 1|flask),
+            correlation = corAR1(form = ~ Time|flask),
             data = .)
 
 # Look at detailed output
 summary(cell.rm.obs) 
 
 # Obtain F-test
-anova(cell.rm.obs)
+anova(cell.rm.obs)S
 
 # # Use `lsmeans` package for time-corrected marginal means
 # lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
@@ -831,6 +831,51 @@ summary(spore.rm.ARMA)
 
 # Obtain F-test
 anova(spore.rm.ARMA)
+```
+
+
+  
+```{r, message = FALSE, warning = FALSE}
+
+# ARMA
+cellinPhage.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at cells in phage infection
+  filter(phage=="SPO1")%>%
+    lme(veg.ml ~   seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time|flask, p=2,q=1),
+            data = .)
+
+
+# Look at detailed output
+summary(cellinPhage.rm.ARMA)  
+
+# Obtain F-test
+anova(cellinPhage.rm.ARMA)
+```
+
+spores?  
+```{r, message = FALSE, warning = FALSE}
+
+# ARMA
+cellinPhage.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at cells in phage infection
+  filter(phage!="SPO1")%>%
+    lme(veg.ml ~   seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time|flask, p=2,q=1),
+            data = .)
+
+
+# Look at detailed output
+summary(cellinPhage.rm.ARMA)  
+
+# Obtain F-test
+anova(cellinPhage.rm.ARMA)
 ```
 
 # Phase Plane w. decomposed trend data
