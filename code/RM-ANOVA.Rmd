@@ -114,14 +114,17 @@ pq.aic <- tibble(p=1, q=1,aic=1)%>%
   
 # Playing around with p&q I found the sappce in which the model conerges is limited
 for(Q in c(0:2)){ 
-  for (P in c(1:(10-3*Q))){ 
+  for (P in c(1:(10-2*Q))){ 
     
-    
+    #this fllowing combination does not work: "Coefficient matrix not invertible"
+    if(P==1 & Q==1) next
+    if(P==1 & Q==2) next
+
     cur.model <- 
         d%>%  
   # looking only at total cells (cell.ml)
     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
-            correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
+            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
             data = .)
     
     pq.aic <- 
@@ -143,7 +146,7 @@ pq.aic%>%
 
 ```
 
-There are 2 models with lowest AIC, both having p=2, and withere q=1 or q=2. Over all the q=1 models seem to be doin better.
+There are 4 models with lowest AIC, those having p=2 or p=6, and withe q=1 or q=2. Over all the q=1 models seem to be doin better.
 
 ### compare AR1 with ARMA
 ```{r}
@@ -153,7 +156,7 @@ cell.rm.AR1 <-
   d%>%
   # looking only at total cells (cell.ml)
     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
-            correlation = corAR1(form = ~ Time | flask),
+            correlation = corAR1(form = ~ 1 | flask),
             data = .)
 
 # corARMA models
@@ -161,53 +164,98 @@ cell.rm.ARMA.p2q1 <-
         d%>%  
   # looking only at total cells (cell.ml)
     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
-            correlation = corARMA(form = ~ Time | flask, p=2,q=1),
+            correlation = corARMA(form = ~ 1 | flask, p=2,q=1),
             data = .)
 
 cell.rm.ARMA.p2q2 <- 
         d%>%  
   # looking only at total cells (cell.ml)
     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
-            correlation = corARMA(form = ~ Time | flask, p=2,q=2),
+            correlation = corARMA(form = ~ 1 | flask, p=2,q=2),
             data = .)
 
-# cell.rm.ARMA.p4q1 <- 
-#         d%>%  
-#   # looking only at total cells (cell.ml)
-#     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
-#             correlation = corARMA(form = ~ Time | flask, p=4,q=1),
-#             data = .)
+cell.rm.ARMA.p6q1 <-
+        d%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask,
+            correlation = corARMA(form = ~ 1 | flask, p=6,q=1),
+            data = .)
 
-AIC(cell.rm.AR1,cell.rm.ARMA.p2q1,cell.rm.ARMA.p2q2)%>%
+cell.rm.ARMA.p6q2 <-
+        d%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask,
+            correlation = corARMA(form = ~ 1 | flask, p=6,q=2),
+            data = .)
+
+AIC(cell.rm.AR1,cell.rm.ARMA.p2q1,cell.rm.ARMA.p2q2,cell.rm.ARMA.p6q1,cell.rm.ARMA.p6q2)%>%
   arrange(AIC)
 ```
 
-The model ARMA p2q2 model is the best.
+The model ARMA p2q1 model is the best.
 
 Is the improvment significant?  
 ```{r}
-anova(cell.rm.ARMA.p2q2,cell.rm.ARMA.p2q1,cell.rm.AR1)
+anova(cell.rm.ARMA.p2q1,cell.rm.ARMA.p6q1,cell.rm.ARMA.p2q2,cell.rm.ARMA.p6q2,cell.rm.AR1)
 ```
 
-Not really, for the different ARMA models. But both seem better than te AR1 model. Selecting the ARMA model woth smaller degrees of freedom: p2q1.
+Both q1 modes are equal, but improved over q2 models. All ARMA models seem better than te AR1 model. 
+
+Selecting the ARMA model woth smaller degrees of freedom: p2q1.
 
 
 ### ARMA.p2q1  
 ```{r}
-anova(cell.rm.ARMA.p2q1)
+car::Anova(cell.rm.ARMA.p2q1)
+```
+
+Hoe sensetive would the result be to model selected?
+
+### ARMA.p6q1  
+```{r}
+car::Anova(cell.rm.ARMA.p6q2)
 ```
 
 ### ARMA.p2q2  
 ```{r}
-anova(cell.rm.ARMA.p2q2)
+car::Anova(cell.rm.ARMA.p2q2)
 ```
-
+### ARMA.p6q2  
+```{r}
+car::Anova(cell.rm.ARMA.p6q2)
+```
 
 ### AR1  
 ```{r}
-anova(cell.rm.AR1)
+car::Anova(cell.rm.AR1)
 ```
 
-All 3 models show the same story:  
+All models show the same story:  
 * The interaction of phage and time has the most sinificant influence on cell density.  
-* Seed bank as a main effect is also significant, but with no interaction with any of the other varibles.
+* Seed bank is not significant, but woud be a significant main effect at p-value of 0.1. 
+
+
+## Post hoc
+
+comparing means across seed bank for phage treatments seperatly: 
+```{r, warning=F, message=F}
+
+# I wrote a function to nicely plot the results of this test
+source(here("code","functions", "plot_TukeyHSD.R"))
+
+tuk <- TukeyHSD(aov(cell.ml~seed.bank,data = filter(d, phage=="SPO1")))
+
+plot_TukeyHSD(tuk)+ggtitle("With Phage")
+
+tuk <- TukeyHSD(aov(cell.ml~seed.bank,data = filter(d, phage!="SPO1")))
+
+plot_TukeyHSD(tuk)+ggtitle("No Phage")
+
+
+```
+
+The differences in cell density are only in phage treatment between no seed bank and the other 2 seed-bank trearments.
+
+
+
+
