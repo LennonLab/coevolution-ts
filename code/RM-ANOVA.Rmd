@@ -1,0 +1,213 @@
+---
+title: "RM-ANOVA for coevolution with a seed bank"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+library(renv)
+# install to projectlibray the resuired packages
+renv::restore()
+# # Initialize lock file when first setting repo
+# renv::init()
+
+library(here)
+# # set root at project file ("coevolution-ts"). 
+# # Done once at initial setup.
+# here::set_here()
+
+library(tidyverse)
+library(cowplot)
+
+
+library(nlme)
+library(pander)
+library(emmeans)
+library(codyn)
+library(smooth)
+
+# save the state of the project library to the lockfile (called renv.lock),
+renv::snapshot()
+
+```
+
+## Population density data  
+I have previously consolidated all the data on population density collected for this experiment. This includes:
+
+| Population | What it is | Method of measurement |
+| - | - | - |
+|spore / mL | host spore density | flow-cytometry: low SYBR population |
+|veg / mL | host vegetative cell density | flow-cytometry: high SYBR population |
+| cell /mL | total host cell density (spore+veg) | flow-cytometry
+| phage/ mL | total SPO1 phage density (free phage) | qPCR (SYBR)  with phage specific primers and lysate serial dilution as standard | 
+
+```{r load data, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","coevolution_pop_density.csv"), )
+
+#add columns on host strain and phage treatment  as encoded in culture name
+d <- 
+  d%>%
+  mutate(host=case_when(grepl("W", culture) ~ "WT",
+                         grepl("SN", culture) ~ "dSpoIIE",
+                         grepl("dS", culture) ~ "dSpoIIE"))%>%
+  
+  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
+                         grepl("Ct", culture) ~ "no_Phage",
+                         grepl("ANC", line) ~ "no_Phage"))%>%
+
+   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+  #add flask to be used as grouping variable
+  mutate(flask=paste(culture,line, sep = "-"))%>%
+  #remove setup data
+  filter(Time>=0)
+
+# plot raw data
+d%>%
+    pivot_longer(cols=contains(".ml"), names_to="pop",values_to="num.ml")%>%
+    ggplot(aes(x=Time, y=num.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_grid(pop~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e10))
+```
+
+Notably, in the first few days of the experiment cell numbers dropped below detection limit in 2 of 3 SNO lines. Missing data cannot be analyzed in RM-ANOVA. So for cell data let's look at data from day 4 and onward:
+
+```{r}
+d <- d%>%
+  filter(Time>=4)
+
+# plot total cells of raw data
+d%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e10))
+```
+
+
+
+## Model selection  
+
+### ARMA covariance
+
+This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC).
+```{r arma, message = FALSE, warning = FALSE}
+
+
+
+# initalise empty table
+pq.aic <- tibble(p=1, q=1,aic=1)%>%
+  filter(p>1)
+  
+# Playing around with p&q I found the sappce in which the model conerges is limited
+for(Q in c(0:2)){ 
+  for (P in c(1:(10-3*Q))){ 
+    
+    
+    cur.model <- 
+        d%>%  
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
+            data = .)
+    
+    pq.aic <- 
+      tibble(p=P, q=Q,aic=AIC(cur.model))%>%
+      bind_rows(pq.aic,.)
+    
+  }
+}
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,aic))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)")
+
+
+```
+
+There are 2 models with lowest AIC, both having p=2, and withere q=1 or q=2. Over all the q=1 models seem to be doin better.
+
+### compare AR1 with ARMA
+```{r}
+
+# corAR1
+cell.rm.AR1 <- 
+  d%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ Time | flask),
+            data = .)
+
+# corARMA models
+cell.rm.ARMA.p2q1 <- 
+        d%>%  
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask, p=2,q=1),
+            data = .)
+
+cell.rm.ARMA.p2q2 <- 
+        d%>%  
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask, p=2,q=2),
+            data = .)
+
+# cell.rm.ARMA.p4q1 <- 
+#         d%>%  
+#   # looking only at total cells (cell.ml)
+#     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+#             correlation = corARMA(form = ~ Time | flask, p=4,q=1),
+#             data = .)
+
+AIC(cell.rm.AR1,cell.rm.ARMA.p2q1,cell.rm.ARMA.p2q2)%>%
+  arrange(AIC)
+```
+
+The model ARMA p2q2 model is the best.
+
+Is the improvment significant?  
+```{r}
+anova(cell.rm.ARMA.p2q2,cell.rm.ARMA.p2q1,cell.rm.AR1)
+```
+
+Not really, for the different ARMA models. But both seem better than te AR1 model. Selecting the ARMA model woth smaller degrees of freedom: p2q1.
+
+
+### ARMA.p2q1  
+```{r}
+anova(cell.rm.ARMA.p2q1)
+```
+
+### ARMA.p2q2  
+```{r}
+anova(cell.rm.ARMA.p2q2)
+```
+
+
+### AR1  
+```{r}
+anova(cell.rm.AR1)
+```
+
+All 3 models show the same story:  
+* The interaction of phage and time has the most sinificant influence on cell density.  
+* Seed bank as a main effect is also significant, but with no interaction with any of the other varibles.
