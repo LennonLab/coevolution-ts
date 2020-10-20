@@ -254,8 +254,184 @@ plot_TukeyHSD(tuk)+ggtitle("No Phage")
 
 ```
 
-The differences in cell density are only in phage treatment between no seed bank and the other 2 seed-bank trearments.
+The differences in cell density are only in phage treatment between no seed-bank and the other 2 seed-bank trearments.
 
 
+# phage density
+
+```{r}
+d%>%
+  filter(phage=="SPO1")%>%
+    ggplot(aes(x=Time, y=phage.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e10))
+```
+
+
+## Model selection  
+
+### ARMA covariance
+
+This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC).
+```{r arma phage, message = FALSE, warning = FALSE}
+
+
+
+# initalise empty table
+pq.aic <- tibble(p=1, q=1,aic=1)%>%
+  filter(p>1)
+  
+# Playing around with p&q I found the sappce in which the model conerges is limited
+for(Q in c(0:2)){ 
+  for (P in c(1:(10-2*Q))){ 
+    
+    #this following combination does not work: "Citeration limit reached without convergence"
+    if(P==4 & Q==1) next
+    if(P==6 & Q==2) next
+    #this following combination does not work: " Coefficient matrix not invertible"
+    if(P==2 & Q==2) next
+
+    cur.model <- 
+        d%>%  
+      filter(phage=="SPO1")%>%
+  # looking only at total phage (phage.ml)
+    lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
+            data = .)
+    
+    pq.aic <- 
+      tibble(p=P, q=Q,aic=AIC(cur.model))%>%
+      bind_rows(pq.aic,.)
+    
+  }
+}
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,aic))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)")
+
+
+```
+
+There are 4 models with lowest AIC, those having (p=3 ,q=2 ); (p=4 ,q=2 );(p=5 ,q=1 );(p=6 ,q=1 )
+or p=6, and withe q=1 or q=2. Over all the q=1 models seem to be doin better.
+
+### compare AR1 with ARMA
+```{r}
+
+# corAR1
+phage.rm.AR1 <- 
+  d%>%
+        filter(phage=="SPO1")%>%
+  # looking only at total phage (phage.ml)
+    lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ 1 | flask),
+            data = .)
+
+# corARMA models
+phage.rm.ARMA.p3q2 <- 
+        d%>%  
+       filter(phage=="SPO1")%>%
+  # looking only at total phage (phage.ml)
+    lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=3,q=2),
+            data = .)
+
+phage.rm.ARMA.p4q2 <- 
+        d%>%  
+       filter(phage=="SPO1")%>%
+  # looking only at total phage (phage.ml)
+    lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=4,q=2),
+            data = .)
+
+phage.rm.ARMA.p5q1 <- 
+        d%>%  
+       filter(phage=="SPO1")%>%
+  # looking only at total phage (phage.ml)
+    lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=5,q=1),
+            data = .)
+
+phage.rm.ARMA.p6q1 <- 
+        d%>%  
+       filter(phage=="SPO1")%>%
+  # looking only at total phage (phage.ml)
+    lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=6,q=1),
+            data = .)
+
+AIC(phage.rm.AR1,phage.rm.ARMA.p3q2,phage.rm.ARMA.p4q2,phage.rm.ARMA.p5q1,phage.rm.ARMA.p6q1)%>%
+  arrange(AIC)
+```
+
+The model ARMA p4q2 model is the best.
+
+Is the improvment significant?  
+```{r}
+anova(phage.rm.ARMA.p4q2,phage.rm.ARMA.p5q1,phage.rm.ARMA.p3q2,phage.rm.ARMA.p6q1,phage.rm.AR1)
+```
+
+All ARMA modes are equal. All ARMA models seem better than te AR1 model. 
+
+Selecting the ARMA model woth smaller degrees of freedom: p3q2
+
+
+### ARMA.p3q2  
+```{r}
+car::Anova(phage.rm.ARMA.p3q2)
+```
+
+How sensetive would the result be to model selected?
+
+### ARMA.p4q2  
+```{r}
+car::Anova(phage.rm.ARMA.p4q2)
+```
+
+### ARMA.p5q1 
+```{r}
+car::Anova(phage.rm.ARMA.p5q1)
+```
+
+### ARMA.p6q2 1
+```{r}
+car::Anova(phage.rm.ARMA.p6q1)
+```
+
+### AR1  
+```{r}
+car::Anova(phage.rm.AR1)
+```
+
+All models show the same story:  
+Both phage and time have a significant influence on phage density. But not their interaction.
+
+
+## Post hoc
+
+comparing means across seed bank: 
+```{r, warning=F, message=F}
+
+
+tuk <- TukeyHSD(aov(phage.ml~seed.bank,data = filter(d, phage=="SPO1")))
+
+plot_TukeyHSD(tuk)+ggtitle("With Phage")
+
+
+
+
+```
 
 
