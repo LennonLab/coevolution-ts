@@ -527,7 +527,7 @@ cell.rm.obs <-
 summary(cell.rm.obs) 
 
 # Obtain F-test
-anova(cell.rm.obs)S
+anova(cell.rm.obs)
 
 # # Use `lsmeans` package for time-corrected marginal means
 # lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
