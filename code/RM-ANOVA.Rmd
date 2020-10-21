@@ -196,7 +196,12 @@ The model ARMA p2q1 model is the best.
 
 Is the improvment significant?  
 ```{r}
-anova(cell.rm.ARMA.p2q1,cell.rm.ARMA.p6q1,cell.rm.ARMA.p2q2,cell.rm.ARMA.p6q2,cell.rm.AR1)
+# AIC(cell.rm.AR1,cell.rm.ARMA.p2q1,cell.rm.ARMA.p2q2,cell.rm.ARMA.p6q1,cell.rm.ARMA.p6q2)%>%
+#   arrange(desc(AIC))%>%
+#   row.names()
+
+anova(cell.rm.AR1,cell.rm.ARMA.p6q2,cell.rm.ARMA.p2q2,cell.rm.ARMA.p6q1,cell.rm.ARMA.p2q1)
+
 ```
 
 Both q1 modes are equal, but improved over q2 models. All ARMA models seem better than te AR1 model. 
@@ -237,7 +242,8 @@ All models show the same story:
 
 ## Post hoc
 
-comparing means across seed bank for phage treatments seperatly: 
+comparing means across seed bank for phage treatments seperatly.
+First with phage: 
 ```{r, warning=F, message=F}
 
 # I wrote a function to nicely plot the results of this test
@@ -245,14 +251,19 @@ source(here("code","functions", "plot_TukeyHSD.R"))
 
 tuk <- TukeyHSD(aov(cell.ml~seed.bank,data = filter(d, phage=="SPO1")))
 
-plot_TukeyHSD(tuk)+ggtitle("With Phage")
+plot_TukeyHSD(tuk)
 
+```
+
+Without phage:
+```{r}
 tuk <- TukeyHSD(aov(cell.ml~seed.bank,data = filter(d, phage!="SPO1")))
 
-plot_TukeyHSD(tuk)+ggtitle("No Phage")
+plot_TukeyHSD(tuk)
 
 
 ```
+
 
 The differences in cell density are only in phage treatment between no seed-bank and the other 2 seed-bank trearments.
 
@@ -324,8 +335,7 @@ pq.aic%>%
 
 ```
 
-There are 4 models with lowest AIC, those having (p=3 ,q=2 ); (p=4 ,q=2 );(p=5 ,q=1 );(p=6 ,q=1 )
-or p=6, and withe q=1 or q=2. Over all the q=1 models seem to be doin better.
+There are 4 models with lowest AIC, those having (p=3 ,q=2 ); (p=4 ,q=2 );(p=5 ,q=1 )
 
 ### compare AR1 with ARMA
 ```{r}
@@ -380,7 +390,12 @@ The model ARMA p4q2 model is the best.
 
 Is the improvment significant?  
 ```{r}
-anova(phage.rm.ARMA.p4q2,phage.rm.ARMA.p5q1,phage.rm.ARMA.p3q2,phage.rm.ARMA.p6q1,phage.rm.AR1)
+AIC(phage.rm.AR1,phage.rm.ARMA.p3q2,phage.rm.ARMA.p4q2,phage.rm.ARMA.p5q1,phage.rm.ARMA.p6q1)%>%
+  arrange(desc(AIC))%>%
+  row.names()
+
+anova(phage.rm.AR1,phage.rm.ARMA.p6q1,phage.rm.ARMA.p3q2,phage.rm.ARMA.p5q1,phage.rm.ARMA.p4q2)
+
 ```
 
 All ARMA modes are equal. All ARMA models seem better than te AR1 model. 
@@ -427,11 +442,176 @@ comparing means across seed bank:
 
 tuk <- TukeyHSD(aov(phage.ml~seed.bank,data = filter(d, phage=="SPO1")))
 
-plot_TukeyHSD(tuk)+ggtitle("With Phage")
+plot_TukeyHSD(tuk)
 
 
 
 
 ```
 
+
+# spore density
+
+```{r}
+d%>%
+  filter(host=="WT")%>%
+    ggplot(aes(x=Time, y=spore.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      theme_bw()+
+      facet_wrap(~phage)+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e9))
+```
+
+
+## Model selection  
+
+### ARMA covariance
+
+This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC).
+```{r arma spore, message = FALSE, warning = FALSE}
+
+
+
+# initalise empty table
+pq.aic <- tibble(p=1, q=1,aic=1)%>%
+  filter(p>1)
+  
+# Playing around with p&q I found the sappce in which the model conerges is limited
+for(Q in c(0:2)){ 
+  for (P in c(1:(10-2*Q))){ 
+    
+    # #this following combination does not work: "Citeration limit reached without convergence"
+    if(P==8 & Q==1) next
+    if(P==3 & Q==2) next
+    if(P>=5 & Q==2) next
+
+
+    cur.model <- 
+        d%>%  
+      filter(host=="WT")%>%
+  # looking only at total phage (phage.ml)
+    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
+            data = .)
+    
+    pq.aic <- 
+      tibble(p=P, q=Q,aic=AIC(cur.model))%>%
+      bind_rows(pq.aic,.)
+    
+  }
+}
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,aic))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)")
+
+
+```
+
+There are 2 models with lowest AIC, those having (p=7 ,q=0 ); (p=7 ,q=1 ).
+
+### compare AR1 with ARMA
+```{r}
+
+# corAR1
+spore.rm.AR1 <- 
+          d%>%  
+      filter(host=="WT")%>%
+  # looking only at total phage (phage.ml)
+    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ 1 | flask),
+            data = .)
+
+# corARMA models
+spore.rm.ARMA.p7q0 <- 
+        d%>%  
+      filter(host=="WT")%>%
+  # looking only at total phage (phage.ml)
+    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=7,q=0),
+            data = .)
+
+spore.rm.ARMA.p7q1 <- 
+        d%>%  
+      filter(host=="WT")%>%
+  # looking only at total phage (phage.ml)
+    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=7,q=1),
+            data = .)
+#adding a p2 model because of transfer regime
+spore.rm.ARMA.p2q1 <- 
+        d%>%  
+      filter(host=="WT")%>%
+  # looking only at total phage (phage.ml)
+    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=2,q=1),
+            data = .)
+
+
+AIC(spore.rm.AR1,spore.rm.ARMA.p7q0,spore.rm.ARMA.p7q1,spore.rm.ARMA.p2q1)%>%
+  arrange(AIC)
+```
+
+```{r}
+# AIC(spore.rm.AR1,spore.rm.ARMA.p7q0,spore.rm.ARMA.p7q1)%>%
+#   arrange(desc(AIC))%>%
+#   row.names()
+
+anova(spore.rm.AR1,spore.rm.ARMA.p7q1,spore.rm.ARMA.p2q1,	spore.rm.ARMA.p7q0)
+```
+
+ARMA models are signficantly better
+
+```{r}
+anova(spore.rm.ARMA.p7q0)
+```
+
+phage:seed.bank:Time is significant.
+
+```{r}
+anova(spore.rm.ARMA.p7q1)
+```
+
+```{r}
+anova(spore.rm.ARMA.p2q1)
+```
+
+```{r}
+anova(spore.rm.AR1)
+```
+
+Significance of 3-way interaction holds in all models. 
+
+
+## Post hoc
+
+comparing means across seed bank for phage treatments seperatly, forst with phage: 
+```{r, warning=F, message=F}
+
+
+tuk <- TukeyHSD(aov(spore.ml~seed.bank,data = filter(d,host=="WT" &phage=="SPO1")))
+tuk
+plot_TukeyHSD(tuk)
+```
+
+And now wothout phage
+```{r, warning=F, message=F}
+tuk <- TukeyHSD(aov(spore.ml~seed.bank,data = filter(d,host=="WT" &phage!="SPO1")))
+tuk
+plot_TukeyHSD(tuk)
+
+
+```
+
+There is a seed-bank treatment effect only in the absence of phage. The effect seems very small (conf. interval on dofference almost at 0)
 

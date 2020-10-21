@@ -21,7 +21,7 @@ plot_TukeyHSD <- function(tuk){
       theme(legend.position = "none",
             axis.text.y = element_text(color = tmp$colors[order(tmp$comparison)]))
     
-    return(tuk.plot)
+    print(tuk.plot)
     
   }
 }
