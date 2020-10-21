@@ -615,3 +615,151 @@ plot_TukeyHSD(tuk)
 
 There is a seed-bank treatment effect only in the absence of phage. The effect seems very small (conf. interval on dofference almost at 0)
 
+=========================================
+# spore percent
+
+```{r}
+d.perc <- 
+  d%>%
+  filter(host=="WT")%>%
+  mutate(perc.spore=spore.ml/cell.ml)
+
+d.perc%>%
+    ggplot(aes(x=Time, y=perc.spore))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      theme_bw()+
+      facet_wrap(~phage)+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")
+```
+
+
+## Model selection  
+
+### ARMA covariance
+
+This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC).
+```{r arma perc.spore, message = FALSE, warning = FALSE}
+
+
+
+# initalise empty table
+pq.aic <- tibble(p=1, q=1,aic=1)%>%
+  filter(p>1)
+  
+# Playing around with p&q I found the sappce in which the model conerges is limited
+for(Q in c(0:2)){ 
+  for (P in c(1:(10-2*Q))){ 
+    
+    # # #this following combination does not work: "Citeration limit reached without convergence"
+    if(P>=9 & Q==0) next
+    if(P>=8 & Q==1) next
+    if(P>=4 & Q==2) next
+
+
+    cur.model <- 
+        d.perc%>%  
+  # looking only at total phage (phage.ml)
+    lme(perc.spore ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
+            data = .)
+    
+    pq.aic <- 
+      tibble(p=P, q=Q,aic=AIC(cur.model))%>%
+      bind_rows(pq.aic,.)
+    
+  }
+}
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,aic))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)")
+
+
+```
+
+There are 2 models with lowest AIC, those having (p=2 ,q=2 ); (p=2 ,q=3 ).
+
+### compare AR1 with ARMA
+```{r}
+
+# corAR1
+pspore.rm.AR1 <- 
+          d.perc%>%  
+    lme(perc.spore ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ 1 | flask),
+            data = .)
+
+# corARMA models
+pspore.rm.ARMA.p2q2 <- 
+   d.perc%>%  
+    lme(perc.spore ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=2,q=2),
+            data = .)
+
+pspore.rm.ARMA.p2q3 <- 
+   d.perc%>%  
+    lme(perc.spore ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=2,q=3),
+            data = .)
+
+
+AIC(pspore.rm.AR1,pspore.rm.ARMA.p2q2,pspore.rm.ARMA.p2q3)%>%
+  arrange(AIC)
+```
+
+```{r}
+# AIC(pspore.rm.AR1,pspore.rm.ARMA.p2q2,pspore.rm.ARMA.p2q3)%>%
+#   arrange(desc(AIC))%>%
+#   row.names()
+
+anova(pspore.rm.AR1,pspore.rm.ARMA.p2q3,pspore.rm.ARMA.p2q2)
+```
+
+ARMA models are signficantly better
+
+```{r}
+anova(pspore.rm.ARMA.p2q2)
+```
+
+phage:seed.bank:Time is significant.
+
+```{r}
+anova(pspore.rm.ARMA.p2q3)
+```
+
+```{r}
+anova(pspore.rm.AR1)
+```
+
+
+
+## Post hoc
+
+comparing means across seed bank for phage treatments seperatly, forst with phage: 
+```{r, warning=F, message=F}
+
+
+tuk <- TukeyHSD(aov(perc.spore~seed.bank,data = filter(d.perc , phage=="SPO1")))
+tuk
+plot_TukeyHSD(tuk)
+```
+
+And now wothout phage
+```{r, warning=F, message=F}
+tuk <- TukeyHSD(aov(perc.spore~seed.bank,data = filter(d.perc , phage!="SPO1")))
+tuk
+plot_TukeyHSD(tuk)
+
+
+```
+
+There is a seed-bank treatment effect only woth phage. 
