@@ -25,6 +25,7 @@ library(nlme)
 library(pander)
 library(emmeans)
 library(codyn)
+library(smooth)
 
 # save the state of the project library to the lockfile (called renv.lock),
 renv::snapshot()
@@ -43,32 +44,36 @@ I have previously consolidated all the data on population density collected for 
 | cell /mL | total host cell density (spore+veg) | flow-cytometry
 | phage/ mL | total SPO1 phage density (free phage) | qPCR (SYBR)  with phage specific primers and lysate serial dilution as standard | 
 
-```{r load data, echo=FALSE}
-d <- read_csv(here("data","coevolution_pop_density.csv"))
+```{r load data, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","coevolution_pop_density.csv"), )
+
+#add columns on host strain and phage treatment  as encoded in culture name
+d <- 
+  d%>%
+   mutate(host=case_when(grepl("W", culture) ~ "WT",
+                         grepl("SN", culture) ~ "dSpoIIE",
+                         grepl("dS", culture) ~ "dSpoIIE"))%>%
+  
+  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
+                         grepl("Ct", culture) ~ "no_Phage",
+                         grepl("ANC", line) ~ "no_Phage"))%>%
+
+   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+  #add flask to be used as grouping variable
+  mutate(flask=paste(culture,line, sep = "-"))
 
 # plot total cells of raw data
 d%>%
   filter(Time>=0)%>%
-  #add columns on phage and seed bank treatments as encoded in culture name
-    mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
-                         grepl("Ct", culture) ~ "no_Phage",
-                         grepl("ANC", line) ~ "no_Phage"))%>%
-  
-    mutate(seed.bank=case_when(grepl("SN", culture) ~ "none",
-                              grepl("WS", culture) ~ "short",
-                              grepl("WL", culture) ~ "long"))%>%
-  
-      #add flask to be used as grouping variable
-  mutate(flask=paste(culture,line, sep = "-"))%>%
     ggplot(aes(x=Time, y=cell.ml))+
-  geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
-  facet_wrap(~phage)+
-  theme_cowplot()+
-  panel_border()+
-  scale_y_log10()+
-  theme(legend.position = "bottom")+
-  ylab("cell/ml (log)")+
-  coord_cartesian(ylim = c(1e5, 1e9))
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_wrap(~phage)+
+      theme_cowplot()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom")+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e9))
 ```
 
 ### Decomposition of the time series  
@@ -77,7 +82,9 @@ From QB handout on temporal diversity:
 > A time series can be broken down into different "categories", which can provide insight into factors contributing to temporal patterns.   
 The common categories of a time series decomposition are the trend (i.e., increasing or decreasing value in the series), seasonality (repeating short-term cycles), and residual error (i.e., statistical noise due to stochastic changes or sampling error).  
 
-First let's look at decomposition of a single sample (WSO-L1), looking at total cells (log-transformed)
+
+First let's look at decomposition of a single sample (WSO-L1), looking at total cells.
+
 
 ```{r, echo=FALSE}
 
@@ -85,11 +92,12 @@ First let's look at decomposition of a single sample (WSO-L1), looking at total 
   filter(Time>=0)%>%
   filter(culture=="WSO")%>%
   filter(line=="L1")%>%
-  mutate(cell.ml=log10(cell.ml))%>%
   select(cell.ml)%>%
 ts(.[,"cell.ml"], start=0, end=14,frequency = 2 )%>%
   decompose()%>%
-  plot()
+  ggplot2::autoplot()+
+  theme_bw()
+
 
 ```
 
@@ -132,7 +140,7 @@ for (ln in levels(as.factor(d$line))){
   select(all_of(pop))%>%
 ts(.[,pop], start=0, end=14,frequency = 2 )%>%
   decompose()
-      
+
   # get trend data
   d.decomp <- 
   tibble(Time=seq(0,14,0.5),
@@ -145,6 +153,12 @@ ts(.[,pop], start=0, end=14,frequency = 2 )%>%
          random= as.vector(tmp$random))%>%
     bind_rows(d.decomp,.)
   tmp$trend%>%as.vector()
+  
+  #plot
+    #   ggplot2::autoplot(tmp)+
+    #     theme_bw()+
+    # ggtitle(paste(cult,ln,pop))+
+    #     ggsave(filename = here("plots","deomposition",paste(pop,cult,ln,".pdf", sep = "_")),width = 8, height = 6)
   
     }
 
@@ -325,20 +339,21 @@ In the presence of phage, the presence of a seed bank stabilizes the host popula
 Now the same analysis with the observed data
 
 ```{r, echo=F}
-
+#make data frame of relevant data
 d.cell.stab <- 
-  d.decomp%>%
-  #remove edges in which trend is NA
-  filter(!is.na(observed))%>%
+  d%>%
+  #remove setup data
+  filter(Time>=0)%>%
   # looking only at total cells
-  filter(pop=="cell.ml")%>%
+  select(Time,flask, host, phage, seed.bank,cell.ml)%>%
   as.data.frame()
 
 cell.stab <- 
   community_stability(df = d.cell.stab,
                     time.var = "Time",
-                    abundance.var = "observed",
+                    abundance.var = "cell.ml",
                     replicate.var = "flask")
+
 
 cell.stab <- 
   cell.stab%>%
@@ -377,7 +392,9 @@ cell.stab%>%
   ggtitle("Observed data on total cell density")
 ```
 
-Exactly the same. Is there statistical support for seed bank stability?
+Almost exactly the same. Is there statistical support for seed bank stability?
+
+I will test this seperatly for w. and w/o phage
 
 ```{r stability stats}
 aov_stab <- 
@@ -387,19 +404,85 @@ aov_stab <-
 summary(aov_stab)
 ```
 
-<<<<<<< HEAD
 Yes, there is! Post-hoc:
 
-```{r}
-TukeyHSD(aov_stab)
-```
+```{r, message=F}
+tuk <- TukeyHSD(aov_stab)
 
-```{r}
-TukeyHSD(aov_stab)%>%plot(col="blue")
+tuk
+# I wrote a function to nicely plot the results of this test
+source(here("code","functions", "plot_TukeyHSD.R"))
+
+plot_TukeyHSD (tuk)
 ```
 
 The difference in stability is driven by a significant difference in stability between the long-residence seed-bank and the no seed-bank treatments. the short-residence seed-bank is not significantly distinguishable from either of the other treatments.
 
+Now in no-phage flasks:
+```{r stability stats wo phage}
+aov_stab <- 
+  aov(stability~seed.bank, 
+    data = filter(cell.stab, phage!="SPO1"))
+  
+summary(aov_stab)
+```
+
+Yes, there is! Post-hoc:
+
+```{r, message=F}
+tuk <- TukeyHSD(aov_stab)
+
+tuk
+
+
+plot_TukeyHSD (tuk)
+```
+
+once again there is a difference between no-seed-bank and one of the seed bak treatments. here it is the short. Maybe it is more of an effect of spre presence or absece than the actual seed bank treatment.
+
+### stability by host
+```{r, message=FALSE}
+#summarise
+sum.cell.stab <- 
+  cell.stab%>%
+    group_by(host,phage) %>% 
+    summarise(
+      sd = sd(stability),
+      stability = mean(stability))
+    
+    
+  # plot
+cell.stab%>%
+  ggplot(aes(x=host, y=stability))+
+  geom_crossbar(data=sum.cell.stab,
+                  aes(ymin=stability-sd, ymax=stability+sd), width=0.3)+
+  geom_dotplot(aes(fill=seed.bank),binaxis='y', stackdir='center', alpha=0.5)+
+  # geom_jitter(shape=21, fill="grey", size=2, width = 0.05, height = 0)+
+  facet_wrap(~phage, scales = "free")+
+  theme_cowplot()+
+  ggtitle("Observed data on total cell density")
+
+```
+
+```{r stability stats by host}
+aov_stab <- 
+  aov(stability~host*phage,
+          data = cell.stab)
+    # data = filter(cell.stab, phage!="SPO1"))
+  
+summary(aov_stab)
+```
+
+Yes, there is! Post-hoc:
+
+```{r, message=F}
+tuk <- TukeyHSD(aov_stab)
+
+tuk
+
+
+plot_TukeyHSD (tuk)
+```
 
 # Repeated-Measures Analysis-of-Variance (RM-ANOVA)
 
@@ -408,58 +491,392 @@ The difference in stability is driven by a significant difference in stability b
 ## RM-ANOVA on decomposed trend total cell data  
 ```{r,  message = FALSE, warning = FALSE}
 
-cell.rm <- 
+cell.rm.decomp <- 
   d.decomp%>%
-  #remove edges in which trend is NA
-  filter(!is.na(trend))%>%
   # looking only at total cells
   filter(pop=="cell.ml")%>%
-  lme(trend ~ phage * seed.bank, random = ~ 1 | line, 
-            correlation = corAR1(form = ~ 1 | line),
-            data = .)
+  lme(trend ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ Time|flask),
+            data = .,
+      #remove edges in which trend is NA
+      na.action = "na.omit")
 
 # Look at detailed output
-summary(cell.rm) 
+summary(cell.rm.decomp) 
 
 # Obtain F-test
-anova(cell.rm)
-
-# # Make cleaner ANOVA table
-# set.caption("RMANOVA for Portal")
-# pander(anova(cell.rm))
+anova(cell.rm.decomp)
 
 # # Use `lsmeans` package for time-corrected marginal means
 # lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
 ```
 
-## RM-ANOVA on decomposed trend phage data  
+## RM-ANOVA on measured total cell data 
 ```{r,  message = FALSE, warning = FALSE}
 
-phage.rm <- 
-  d.decomp%>%
-  # looking only at phages
-  filter(pop=="phage.ml")%>%
-  #remove edges in which trend is NA 
-  # AND remove no-phage controls
-  filter(!is.na(trend))%>%
-  lme(trend ~ seed.bank, random = ~ 1 | line, 
-            correlation = corAR1(form = ~ 1 | line),
+cell.rm.obs <- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ Time|flask),
             data = .)
 
 # Look at detailed output
-summary(phage.rm) 
+summary(cell.rm.obs) 
 
 # Obtain F-test
-anova(phage.rm)
-
-# # Make cleaner ANOVA table
-# set.caption("RMANOVA for Portal")
-# pander(anova(cell.rm))
+anova(cell.rm.obs)
 
 # # Use `lsmeans` package for time-corrected marginal means
-# lsmeans(phage.rm, ~seed.bank) %>% plot()+theme_cowplot()
+# lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
 ```
 
+### RM-ANOVA covariance model selection
+
+Form Jay:  
+
+> Covariance structures I typically consider with rm-anova are compound symmetry (cs), autoregressive (ar[x]), unstructured (un), Huynh-Feldt (hf).  
+
+
+#### acf and pacf
+
+ACF is used to find the q order of a moving average model, MA(q). Q will be the lag beyond which ACF is indistiguishible from 0, i.e. fall within the error lines on the ACF plot.
+```{r acf}
+cur.sample <- "SNCt-L2"
+
+ d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+    filter(flask==cur.sample)%>%
+    arrange(Time)%>%
+    select(cell.ml)%>%
+  # as_vector()%>%
+  acf()
+
+
+```
+
+PACF, partial ACF, is used to find p, the order of a auto-regeressive model, AR(p). P will consist of lags with non-zero PACF values. i.e. bars extending beyond the error lines in the plot.
+
+```{r pacf}
+ d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+    filter(flask==cur.sample)%>%
+    arrange(Time)%>%
+    select(cell.ml)%>%
+  as_vector()%>%
+  pacf()
+
+```
+
+```{r}
+pq <- tibble(flask=unique(d$flask), ar.p=NA, ma.q=NA)
+
+for (i in 1:nrow(pq)){
+  flask.i <- pq$flask[i]
+  
+  q.i <- 
+    d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+    filter(flask==flask.i)%>%
+    select(cell.ml)%>%
+  as_vector()%>%
+   sma()
+   
+  pq$ma.q[i] <- parse_number(q.i$model)
+ 
+  p.i <- 
+   d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+    filter(flask==flask.i)%>%
+   select(cell.ml)%>%
+  as_vector()%>%
+   ar()
+  
+  pq$ar.p[i] <-  p.i$order
+ 
+}
+
+pq%>%
+  pivot_longer(-flask,names_to="param")%>%
+  separate(flask,sep = "-", into = c("culture","line"), remove = FALSE)%>%
+  mutate(phage=if_else(str_detect(flask,"O"),"SPO1","noPhage"))%>%
+    ggplot(aes(x=culture,y=value))+
+  geom_jitter( width=0.1, height = 0.1, shape=21, fill="white", size=2)+
+  facet_grid(phage~param, scales = "free")+
+  theme_minimal_vgrid()+
+  scale_y_continuous(breaks=1:10)+
+  panel_border()+
+  coord_flip()
+  
+
+  
+```
+
+
+#### Model selection  
+
+```{r, message = FALSE, warning = FALSE}
+# corAR1
+cell.rm.AR1 <- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ Time | flask),
+            data = .)
+
+# # Compound Symmetry -> does not fit the time structure IMHO
+# cell.rm.CompSymm <- 
+#   d%>%
+#   # remove setup data
+#   filter(Time>=0)%>%
+#   # looking only at total cells (cell.ml)
+#     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+#             correlation = corCompSymm(form = ~ Time | flask),
+#             data = .)
+
+# # General Correlation Structure (=unstructured?)
+# cell.rm.Symm <-
+#   d%>%
+#   # remove setup data
+#   filter(Time>=0)%>%
+#   # The covariate structure requires a sequence of consecutive integers
+#   mutate(Time=as.integer(2*Time))%>%
+#   mutate(flask=as.integer(as_factor(flask)))%>%
+#   arrange(flask,Time)%>%
+#   # looking only at total cells (cell.ml)
+#     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask,
+#             correlation = corSymm(form = ~ Time | flask),
+#             data = .)
+#   # nlminb problem, convergence error code = 1
+#   # message = iteration limit reached without convergence (10)
+
+# # Spherical Correlation Structure (=Huynh-Feldt?) => spatial??
+# cell.rm.Spher<- 
+#   d%>%
+#   # remove setup data
+#   filter(Time>=0)%>%
+#   # looking only at total cells (cell.ml)
+#     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+#             correlation = corSpher(form = ~ Time | flask),
+#             data = .)
+
+# ARMA
+cell.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask, p=2,q=1),
+            data = .)
+
+SAIC(cell.rm.AR1,cell.rm.ARMA )%>%arrange(AIC)
+# 
+anova(cell.rm.AR1,cell.rm.ARMA)
+
+```
+
+
+Selecting the model with ARMA covariance. 
+```{r, message = FALSE, warning = FALSE}
+
+
+# Look at detailed output
+summary(cell.rm.ARMA) 
+
+# Obtain F-test
+anova(cell.rm.ARMA)
+```
+
+The differences between the AR1 and ARMA models was not great, so let's look also at the AR1 model:  
+```{r, message = FALSE, warning = FALSE}
+
+
+# Look at detailed output
+summary(cell.rm.AR1) 
+
+# Obtain F-test
+anova(cell.rm.AR1)
+```
+
+Significant effect of seed bank on cell density. No interaction with phage.
+
+
+## RM-ANOVA on  phage data  
+#### Model selection  
+
+```{r, message = FALSE, warning = FALSE}
+# corAR1
+phage.rm.AR1 <- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total phages (phage.ml)
+  filter(phage=="SPO1")%>%
+    lme(phage.ml ~  seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ 1|flask),
+            data = .)
+
+# Compound Symmetry 
+phage.rm.CompSymm <- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total phages (phage.ml)
+  filter(phage=="SPO1")%>%
+    lme(phage.ml ~  seed.bank * Time , random = ~1|flask, 
+            correlation = corCompSymm(form = ~ 1|flask),
+            data = .)
+
+# # General Correlation Structure (=unstructured?)
+# phage.rm.Symm <- 
+#   d%>%
+#   # remove setup data
+#   filter(Time>=0)%>%
+#   # looking only at total phages (phage.ml)
+#     filter(phage=="SPO1")%>%
+#     lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+#             correlation = corSymm(form = ~ 1|flask),
+#             data = .)
+#   # nlminb problem, convergence error code = 1
+#   # message = iteration limit reached without convergence (10)
+
+# Spherical Correlation Structure (=Huynh-Feldt?)
+phage.rm.Spher<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total phages (phage.ml)
+  filter(phage=="SPO1")%>%
+    lme(phage.ml ~  seed.bank * Time , random = ~1|flask, 
+            correlation = corSpher(form = ~ 1|flask),
+            data = .)
+
+# ARMA
+phage.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total phages (phage.ml)
+  filter(phage=="SPO1")%>%
+    lme(phage.ml ~  seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1|flask, p=2,q=2),
+            data = .)
+
+AIC(phage.rm.AR1,phage.rm.CompSymm,phage.rm.Spher,phage.rm.ARMA )
+# 
+anova(phage.rm.AR1,phage.rm.ARMA)
+
+```
+
+
+Selecting the model with ARMA covariance. 
+```{r, message = FALSE, warning = FALSE}
+
+
+# Look at detailed output
+summary(phage.rm.ARMA) 
+
+# Obtain F-test
+anova(phage.rm.ARMA)
+```
+
+
+veg cells?  
+```{r, message = FALSE, warning = FALSE}
+
+# ARMA
+veg.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at total phages (phage.ml)
+  # filter(phage=="SPO1")%>%
+    lme(veg.ml ~  phage* seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1|flask, p=2,q=2),
+            data = .)
+
+# Look at detailed output
+summary(veg.rm.ARMA) 
+
+# Obtain F-test
+anova(veg.rm.ARMA)
+```
+
+spores?  
+```{r, message = FALSE, warning = FALSE}
+
+# ARMA
+spore.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at spores, i.e only WT
+  filter(host=="WT")%>%
+    lme(veg.ml ~  phage* seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1|flask, p=2,q=2),
+            data = .)
+
+
+# Look at detailed output
+summary(spore.rm.ARMA)  
+
+# Obtain F-test
+anova(spore.rm.ARMA)
+```
+
+
+  
+```{r, message = FALSE, warning = FALSE}
+
+# ARMA
+cellinPhage.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at cells in phage infection
+  filter(phage=="SPO1")%>%
+    lme(veg.ml ~   seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time|flask, p=2,q=1),
+            data = .)
+
+
+# Look at detailed output
+summary(cellinPhage.rm.ARMA)  
+
+# Obtain F-test
+anova(cellinPhage.rm.ARMA)
+```
+
+spores?  
+```{r, message = FALSE, warning = FALSE}
+
+# ARMA
+cellinPhage.rm.ARMA<- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  # looking only at cells in phage infection
+  filter(phage!="SPO1")%>%
+    lme(veg.ml ~   seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time|flask, p=2,q=1),
+            data = .)
+
+
+# Look at detailed output
+summary(cellinPhage.rm.ARMA)  
+
+# Obtain F-test
+anova(cellinPhage.rm.ARMA)
+```
 
 # Phase Plane w. decomposed trend data
 
