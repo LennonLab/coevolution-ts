@@ -23,10 +23,6 @@ library(cowplot)
 
 
 library(nlme)
-# library(pander)
-# library(emmeans)
-# library(codyn)
-# library(smooth)
 
 # save the state of the project library to the lockfile (called renv.lock),
 renv::snapshot()
@@ -78,15 +74,43 @@ d%>%
       coord_cartesian(ylim = c(1e5, 1e10))
 ```
 
-In the first few days of the experiment cell numbers dropped below detection limit in 2 of 3 SNO lines. Missing data cannot be analyzed in RM-ANOVA. I will remove these points.
+In the first few days of the experiment cell numbers dropped below detection limit in 2 of 3 SNO lines. Missing data cannot be analyzed in RM-ANOVA. I will assign these points the detection limit values.
+
+Points with missing data: 
+```{r}
+d%>%
+  filter(cell.ml<10)
+```
+
+
+---  
+
+**Flow-cytometry detection limit**
+
+The flow cytometer stop conditions were either $50\mu L$ or 50,000 events, whatever came first.  
+In addition, to account for false asignments by noise I required that a gated population have at least 100 events to be taken into account. So the minimal detected population would have 100 cells in $50\mu L$ of analyzed liquid. At this poimt of the experiment we were analyzing x100 diluted samples.
 
 ```{r}
+detection.limit <- 100 * (1000/50) * 100
+```
 
+100 events X $1000/50\mu L$ X100 = `r detection.limit` 
+
+I will use $1X10^5$, half the detection limit dor missing value points
+---
+
+
+
+
+```{r}
+d <- d%>%
+  mutate(cell.ml=if_else(cell.ml>10, cell.ml,detection.limit/2))
 # plot total cells of raw data
 d%>%
-  mutate(cell.ml=if_else(cell.ml>10, cell.ml,NULL))%>%
     ggplot(aes(x=Time, y=cell.ml))+
       geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+  geom_hline(yintercept = detection.limit, color="red")+
+  geom_label(label="detection limit", x=10, y=log10(detection.limit), color="red")+
       facet_wrap(~phage)+
       theme_bw()+
       panel_border()+
@@ -94,7 +118,7 @@ d%>%
       theme(legend.position = "bottom",
             text=element_text(size=14))+
       ylab("cell/ml (log)")+
-      coord_cartesian(ylim = c(5e5, 5e9))
+      coord_cartesian(ylim = c(1e5, 2e9))
 ```
 
 ## Model selection  
