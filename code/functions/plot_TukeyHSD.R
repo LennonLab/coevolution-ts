@@ -1,5 +1,5 @@
 # A function to nicely plot a TukeyHSD objext
-plot_TukeyHSD <- function(tuk){
+plot_TukeyHSD <- function(tuk, back=c("return","plot")){
   
   library(tidyverse)
   
@@ -21,7 +21,7 @@ plot_TukeyHSD <- function(tuk){
       theme(legend.position = "none",
             axis.text.y = element_text(color = tmp$colors[order(tmp$comparison)]))
     
-    print(tuk.plot)
-    
+    if (back=="plot") print(tuk.plot)
+    if (back=="return") return(tuk.plot)
   }
 }
