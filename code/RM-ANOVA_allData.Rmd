@@ -140,11 +140,11 @@ for(Q in c(0:2)){
   for (P in c(1:(10-2*Q))){ 
     
     #this fllowing combination does not work: "iteration limit reached without convergence"
-    if(P==5 & Q==2) next
+    if(P==10 & Q==0) next
+    if(P==4 & Q==2) next
 
     cur.model <- 
         d%>% 
-      filter(cell.ml>10)%>%
   # looking only at total cells (cell.ml)
     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
             correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
@@ -182,9 +182,8 @@ pq.best <- pq.aic%>%
 
 for (i in 1:nrow(pq.best)){
   l.rm[[i]] <- 
-    d%>%  
-    filter(cell.ml>10)%>%
-  # looking only at total cells (cell.ml)
+    d%>%
+    # looking only at total cells (cell.ml)
     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
             correlation = corARMA(form = ~ 1 | flask,
                                   p=pq.best$p[i],q=pq.best$q[i]),
@@ -196,7 +195,6 @@ for (i in 1:nrow(pq.best)){
 # add corAR1 to list
 l.rm[[i+1]] <- 
   d%>%
-  filter(cell.ml>10)%>%
   # looking only at total cells (cell.ml)
     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
             correlation = corAR1(form = ~ 1 | flask),
@@ -217,15 +215,16 @@ anova.lme(l.rm[[aic.l[6]]],
           l.rm[[aic.l[1]]])
 ```
 
-The best model is signofocantly better than the next 1. Looking at its results:
+The best model is not significantly better than any of the other ARMA models. Looking at model 4, has the least degrees of freedom (df=17) :
 
 ```{r}
 #display best model results
-summary(l.rm[[aic.l[1]]])
-  anova.lme(l.rm[[aic.l[1]]])
+summary(l.rm[[aic.l[4]]])
+  anova.lme(l.rm[[aic.l[4]]])
 ```
 
-**No significant effect of seed.bank on population density at any level.**
+The model wirth ARMA(P=2,Q=1) was chosen. 
+**No significant effect of seed.bank on population density at any level, main effect or ontweraction.**
 
 
 How sensetive would the result be to model selected?
@@ -234,7 +233,7 @@ map(l.rm,anova.lme)
 ```
 
 All models show the same story:  
-* The interaction of phage and time has the most sinificant influence on cell density.  
+* The interaction of phage and time has the most significant influence on cell density.  
 * Seed bank is not significant.
 
 =================  
