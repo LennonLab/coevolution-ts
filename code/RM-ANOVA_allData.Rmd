@@ -121,6 +121,144 @@ d%>%
       coord_cartesian(ylim = c(1e5, 2e9))
 ```
 
+```{r}
+
+# plot total cells of raw data
+d%>%
+  group_by(phage,seed.bank,Time)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem,color=seed.bank), alpha=0.7)+
+      geom_line(aes(color=seed.bank), size=1, alpha=0.7)+
+      facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 2e9))
+```
+
+```{r}
+#sumarize all data
+p1 <- d%>%
+  group_by(phage)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=phage, y=cell.ml))+
+      geom_col(aes(fill=phage))+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem), alpha=0.7)+
+      theme_cowplot()+
+  theme(legend.position = "bottom")
+
+
+p2 <- d%>%
+  # group_by(seed.bank,phage)%>%
+      ggplot(aes(x=phage, y=cell.ml))+
+      geom_violin(aes(fill=phage))+
+  # geom_jitter(width = 0.2, height = 0, alpha=.5, color="grey")+
+      theme_cowplot()+
+  scale_y_log10()+
+  ylab("cell/ml(log)")+
+  theme(legend.position = "bottom")
+
+
+plot_grid(p1,p2)
+```
+
+```{r}
+
+d%>%
+  group_by(phage,Time)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=phage, y=cell.ml))+
+      geom_col(aes(fill=phage),position = "dodge")+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem), alpha=0.7)+
+      theme_cowplot()+
+  theme(legend.position = "bottom")+
+  facet_wrap(~as.factor(Time))
+
+
+
+```
+
+
+```{r}
+#sumarize all data
+p1 <- d%>%
+  group_by(seed.bank)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=seed.bank, y=cell.ml))+
+      geom_col(aes(fill=seed.bank))+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem), alpha=0.7)+
+      theme_cowplot()+
+  theme(legend.position = "bottom")
+
+
+p2 <- d%>%
+  # group_by(seed.bank,phage)%>%
+      ggplot(aes(x=seed.bank, y=cell.ml))+
+      geom_violin(aes(fill=seed.bank))+
+  # geom_jitter(width = 0.2, height = 0, alpha=.5, color="grey")+
+      theme_cowplot()+
+  scale_y_log10()+
+  ylab("cell/ml(log)")+
+  theme(legend.position = "bottom")
+
+
+plot_grid(p1,p2)
+```
+
+```{r}
+#sumarize all data
+p1 <- d%>%
+  group_by(seed.bank,phage)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=seed.bank, y=cell.ml))+
+      geom_col(aes(fill=seed.bank))+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem), alpha=0.7)+
+      theme_cowplot()+
+    facet_wrap(~phage)+
+  panel_border()+
+  theme(legend.position = "bottom")
+
+p2 <- d%>%
+  group_by(seed.bank,phage)%>%
+      ggplot(aes(x=seed.bank, y=cell.ml))+
+      geom_violin(aes(fill=seed.bank))+
+  # geom_jitter(width = 0.2, height = 0, alpha=.5, color="grey")+
+      theme_cowplot()+
+  facet_wrap(~phage)+
+  panel_border()+
+  scale_y_log10()+
+  ylab("cell/ml(log)")+
+  theme(legend.position = "bottom")
+
+plot_grid(p1,p2) 
+```
+
+# Auto correation
+Based on Zuur, Alain F., et al. "Violation of Independence–Part I." Mixed effects models and extensions in ecology with R. Springer, New York, NY, 2009. 143-160.
+```{r}
+#no auto correation model
+M0 <-     lme(cell.ml ~seed.bank*Time, random = ~1|flask ,
+                     data = d%>%filter(phage=="SPO1"))
+
+E <- residuals(M0, type = "normalized")
+acf(E, main="SPO1") 
+
+#no auto correation model
+M0 <-     lme(cell.ml ~seed.bank*Time, random = ~1|flask ,
+                     data = d%>%filter(phage!="SPO1"))
+
+E <- residuals(M0, type = "normalized")
+acf(E, main="no Phage") 
+
+
+```
+
+
+
 ## Model selection  
 
 
@@ -140,14 +278,14 @@ for(Q in c(0:2)){
   for (P in c(1:(10-2*Q))){ 
     
     #this fllowing combination does not work: "iteration limit reached without convergence"
-    if(P==10 & Q==0) next
-    if(P==4 & Q==2) next
+    if(P==8 & Q==1) next
+    if(P>=3 & Q==2) next
 
     cur.model <- 
         d%>% 
   # looking only at total cells (cell.ml)
     lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
-            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
+            correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
             data = .)
     
     pq.aic <- 
@@ -184,10 +322,12 @@ for (i in 1:nrow(pq.best)){
   l.rm[[i]] <- 
     d%>%
     # looking only at total cells (cell.ml)
-    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
-            correlation = corARMA(form = ~ 1 | flask,
-                                  p=pq.best$p[i],q=pq.best$q[i]),
-            data = .)
+    lme(cell.ml ~ phage * seed.bank * Time , 
+        random = ~1|flask, 
+        correlation = corARMA(form = ~ Time | flask,
+                              p=pq.best$p[i],
+                              q=pq.best$q[i]),
+        data = .)
     
 }
 
@@ -196,9 +336,10 @@ for (i in 1:nrow(pq.best)){
 l.rm[[i+1]] <- 
   d%>%
   # looking only at total cells (cell.ml)
-    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
-            correlation = corAR1(form = ~ 1 | flask),
-            data = .)
+    lme(cell.ml ~ phage * seed.bank * Time ,
+        random = ~1|flask, 
+        correlation = corAR1(form = ~ Time | flask),
+        data = .)
 
 
 # get list order by AIC
@@ -219,8 +360,8 @@ The best model is not significantly better than any of the other ARMA models. Lo
 
 ```{r}
 #display best model results
-summary(l.rm[[aic.l[4]]])
-  anova.lme(l.rm[[aic.l[4]]])
+summary(l.rm[[aic.l[1]]])
+  car::Anova(l.rm[[aic.l[1]]])
 ```
 
 The model wirth ARMA(P=2,Q=1) was chosen. 
@@ -235,6 +376,168 @@ map(l.rm,anova.lme)
 All models show the same story:  
 * The interaction of phage and time has the most significant influence on cell density.  
 * Seed bank is not significant.
+
+## Post hoc
+
+comparing means across seed bank: 
+```{r, warning=F, message=F}
+source(here("code","functions","plot_TukeyHSD.R"))
+
+tuk.p <- TukeyHSD(aov(cell.ml~seed.bank,
+                    data =d%>%
+                      filter(phage=="SPO1")))%>%
+  plot_TukeyHSD(back = "return")
+
+
+tuk.nop <- TukeyHSD(aov(cell.ml~seed.bank,
+                    data =d%>%
+                      filter(phage!="SPO1")))%>%
+  plot_TukeyHSD(back = "return")
+
+plot_grid(tuk.p,tuk.nop,labels = c("SPO1","no Phage"), nrow = 2)
+
+TukeyHSD(aov(cell.ml~seed.bank*phage*Time,data =d))%>%
+                      plot_TukeyHSD(back = "plot")
+```
+
+In the no-phage lines the confidence interval for the difference between seed-bank treatments is just touching 0. This is likely the sourc of the borderline significance osbserved.
+
+=================  
+
+# Host density by host  
+
+================= 
+
+I will repeat the same anlysis but will treat the seed-bank as a 2-level factor: with (WT host) or without ($\Delta$spoIIE) a seed bank.
+
+## Model selection  
+
+
+### ARMA covariance
+
+This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC).
+```{r , message = FALSE, warning = FALSE}
+
+
+
+# initalise empty table
+pq.aic <- tibble(p=1, q=1,aic=1)%>%
+  filter(p>1)
+  
+# Playing around with p&q I found the sappce in which the model conerges is limited
+for(Q in c(0:2)){ 
+  for (P in c(1:(10-2*Q))){ 
+    
+    #this fllowing combination does not work: "iteration limit reached without convergence"
+    if(P>=7 & Q==1) next
+    if(P>=3 & Q==2) next
+
+    cur.model <- 
+        d%>% 
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * host * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
+            data = .)
+    
+    pq.aic <- 
+      tibble(p=P, q=Q,aic=AIC(cur.model))%>%
+      bind_rows(pq.aic,.)
+    
+  }
+}
+pq.aic%>%arrange(aic)
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,aic))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)")
+
+
+```
+
+I will test the best 5 models against AR1,
+
+### compare AR1 with ARMA
+```{r}
+
+l.rm <- list()
+
+pq.best <- pq.aic%>%
+  slice_min( order_by=aic,n=5)
+
+for (i in 1:nrow(pq.best)){
+  l.rm[[i]] <- 
+    d%>%
+    # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * host * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask,
+                                  p=pq.best$p[i],q=pq.best$q[i]),
+            data = .)
+    
+}
+
+
+# add corAR1 to list
+l.rm[[i+1]] <- 
+  d%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * host * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ Time | flask),
+            data = .)
+
+
+# get list order by AIC
+aic.l <- sapply(l.rm,AIC)%>%
+  sort.list()
+
+
+# compare models by AIC order
+anova.lme(l.rm[[aic.l[6]]],
+          l.rm[[aic.l[5]]],
+          l.rm[[aic.l[4]]],
+          l.rm[[aic.l[3]]],
+          l.rm[[aic.l[2]]],
+          l.rm[[aic.l[1]]])
+```
+
+The best model is not significantly better than any of the other ARMA models. Looking at model 4, has the least degrees of freedom (df=14) :
+
+```{r}
+#display best model results
+summary(l.rm[[aic.l[1]]])
+  anova.lme(l.rm[[aic.l[1]]])
+```
+
+The model wirth ARMA(P=2,Q=1) was chosen. 
+**No significant effect of host on population density at any level, main effect or with interaction.**
+
+
+How sensetive would the result be to model selected?
+```{r}
+map(l.rm,anova.lme)
+```
+
+All models show the same story:  
+* The interaction of phage and time has the most significant influence on cell density.  
+* Seed bank is not significant.
+
+```{r}
+    d%>%
+  # filter(Time>3)%>%
+  # filter(phage=="SPO1")%>%
+    # looking only at total cells (cell.ml)
+    lme(cell.ml ~  seed.bank * phage *Time, random = ~1|flask,
+            # correlation = corARMA(form = ~ Time | flask,
+            #                       p=2,q=1),
+        correlation = corAR1(form = ~Time|flask),
+            data = .)%>%
+  anova.lme()
+```
+
 
 =================  
 
