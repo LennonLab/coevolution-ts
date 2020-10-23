@@ -237,6 +237,24 @@ p2 <- d%>%
 plot_grid(p1,p2) 
 ```
 
+```{r}
+
+
+d%>%
+  group_by(seed.bank,Time)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=seed.bank, y=cell.ml))+
+      geom_col(aes(fill=seed.bank),position = "dodge")+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem), alpha=0.7)+
+      theme_cowplot()+
+  theme(legend.position = "bottom")+
+  facet_wrap(~as.factor(Time))
+
+
+
+```
+
+
 # Auto correation
 Based on Zuur, Alain F., et al. "Violation of Independence–Part I." Mixed effects models and extensions in ecology with R. Springer, New York, NY, 2009. 143-160.
 ```{r}
