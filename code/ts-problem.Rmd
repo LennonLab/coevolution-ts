@@ -1,0 +1,121 @@
+---
+title: "Time series analysis"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+```{r setup, include=FALSE}
+library(renv)
+# install to projectlibray the resuired packages
+renv::restore()
+# # Initialize lock file when first setting repo
+# renv::init()
+
+library(here)
+# # set root at project file ("coevolution-ts"). 
+# # Done once at initial setup.
+# here::set_here()
+
+library(tidyverse)
+library(cowplot)
+
+
+library(nlme)
+
+```
+
+I have a dataset of bacteria and phage population collected over the course of 28 days of an experimental co-evolution trial. In the example here we wil focus on the total bacterial cell density. 
+
+**Experimental design**  
+The experiment was setup to test the influence of host seed banks of coevolution with phage. The experiment included 2 treatments:  
+*phage* (2 levels):  
+* phage SPO1 added to cultures at time 0  
+* no phage added.   
+*seed bank* (3 levels):  
+* no seed bank - genetic mutant that cannot sporulate  
+* short residence-time seed bank - most spores germinate upon   transfer  
+* long residence-time seed bank - Spores at each transfer are mixed with older spores that are maintained in fridge.  
+
+Three replicated lines of each treatment were maintained independently.
+
+Transfer regime: cultures were grown in rich sporulation media, that is media containing ample resources to enable the population to reach high densities. However upon resource depletion many of the cells will sporulate and become dormant. To allow time for sporulation to reach completion, even when resource deplrtion wasdelayed by phage lysis, transfers were done every other day by sampling 1% of the population, then used to inoculate fresh media. 
+Sampling: population samples were taken daily and analyzed by flow cytometry. Counts include both spores and vegatative cells. Note that **the frequency of sampling is double that of transfer**. this generates a *seasonal-like* trend in the data.
+
+```
+Flow-cytometry detection limit
+
+The flow cytometer stop conditions were either 50uL or 50,000 events, whatever came first.  
+In addition, to account for false asignments by noise I required that a gated population have at least 100 events to be taken into account. So the minimal detected population would have 100 cells in 50uL of analyzed liquid. At this point of the experiment we were analyzing x100 diluted samples.
+```
+
+```{r}
+detection.limit <- 100 * (1000/50) * 100
+```
+
+
+
+**The data**  
+
+
+```{r load data, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","coevolution_pop_density.csv"), )
+
+#add columns on host strain and phage treatment  as encoded in culture name
+d <- 
+  d%>%
+  mutate(host=case_when(grepl("W", culture) ~ "WT",
+                         grepl("SN", culture) ~ "dSpoIIE",
+                         grepl("dS", culture) ~ "dSpoIIE"))%>%
+  
+  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
+                         grepl("Ct", culture) ~ "no_Phage",
+                         grepl("ANC", line) ~ "no_Phage"))%>%
+
+   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+  #add flask to be used as grouping variable
+  mutate(flask=paste(culture,line, sep = "-"))%>%
+  #remove setup data
+  filter(Time>=0)
+
+# plot raw data
+d%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+      geom_hline(yintercept = detection.limit, color="red")+
+  geom_label(label="detection limit", x=10, y=log10(detection.limit), color="red")+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_grid(.~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e10))
+```
+
+Three points across 2 cultres, were below the detection limit. However since there was regrowth we know the cells remained above 0. We will asign these points a value that is 50% of the detectio limit ($10^5$ cells/ml). We can now also summarize the data.  
+
+```{r}
+d <- d%>%
+  mutate(cell.ml=if_else(cell.ml>10, cell.ml,detection.limit/2))
+
+# plot total cells of raw data
+d%>%
+  group_by(phage,seed.bank,Time)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem,color=seed.bank), alpha=0.7)+
+      geom_line(aes(color=seed.bank), size=1, alpha=0.7)+
+      facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 2e9))+
+  labs(caption  = "mean +/- SEM")
+```
+
+
+We now want to evaluate the effect of the treatments (phage, seed bank) on the resppnse (cell/ml). In our analysis we wish to account for trmporal autocorelation within the samples of each culture (labeled below as flask). In addition we eant to account for the seasonal cariation caused by transfe every other day. 
