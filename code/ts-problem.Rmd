@@ -118,4 +118,44 @@ d%>%
 ```
 
 
-We now want to evaluate the effect of the treatments (phage, seed bank) on the resppnse (cell/ml). In our analysis we wish to account for trmporal autocorelation within the samples of each culture (labeled below as flask). In addition we eant to account for the seasonal cariation caused by transfe every other day. 
+We now want to evaluate the effect of the treatments (phage, seed bank) on the resppnse (cell/ml). In our analysis we wish to account for temporal autocorelation within the samples of each culture (labeled below as flask). In addition we eant to account for the seasonal variation caused by transfering every other day.
+
+The aproach is to conduct an RM-ANOVA, similar to anlaysis done by Laren and Lennon. Here is one such model:
+
+> # this is a mixed equation model where day and treatment are fixed factors, while cID is a random factor  
+model.ar <- lme(log.abd ~ lim * day.fac,
+                random = ~ 1 | cID, 
+                correlation=corAR1(form = ~ 1 | cID),
+                data = phage)
+
+In my ubderstanding this model tests the response `log.abd` (abundance data) to 2 fixed effects:`lim` treatment (limiting nutrient) and `day.fac` (Time as a factor). In addition wach of the chemostats (`cID`) is specified as a random effect. The auto-correlation is apecified by an `corAR1` being "*an autocorrelation structure of order 1*".
+
+```{r}
+n=10
+pvals <- rep(NA,n)
+
+for (i in 1:n)
+{
+  p <- 
+d%>%
+  mutate(Time=i*Time)%>%
+    lme(cell.ml ~ phage * seed.bank * Time ,
+        random = ~1|flask, 
+        correlation = corAR1(form = ~ Time | flask),
+        data = .)%>%
+  anova.lme()
+
+# extract main effect of seed bank p value
+pvals[i] <- p$`p-value`[3]
+}
+
+
+qplot(1:n, pvals)+
+  geom_line()+
+  geom_hline(yintercept = 0.05, color="red")+
+  ylab("p-value for seed-bank main effect")+
+  xlab("Time mutliplication coefficient")
+
+```
+
+
