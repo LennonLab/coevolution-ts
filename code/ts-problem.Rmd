@@ -1,0 +1,289 @@
+---
+title: "Time series analysis"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+```{r setup, include=FALSE}
+library(renv)
+# install to projectlibray the resuired packages
+renv::restore()
+# # Initialize lock file when first setting repo
+# renv::init()
+
+library(here)
+# # set root at project file ("coevolution-ts"). 
+# # Done once at initial setup.
+# here::set_here()
+
+library(tidyverse)
+library(cowplot)
+
+
+library(nlme)
+# library(car)
+
+```
+
+I have a data set of bacteria and phage populations collected over the course of 28 days of an experimental co-evolution trial. In the example here we will focus on the total bacterial cell density. 
+
+**Experimental design**  
+The experiment was setup to test the influence of host seed banks on coevolution with phage. The experiment included 2 treatments:  
+ **phage** (2 levels):  
+-- phage SPO1 added to cultures at time 0  
+-- no phage added.   
+ **seed bank** (3 levels):  
+-- no seed bank - genetic mutant that cannot sporulate  
+-- short residence-time seed bank - most spores germinate upon   transfer  
+-- long residence-time seed bank - Spores at each transfer are mixed with older spores that are maintained in fridge.  
+
+Three replicated lines of each treatment were maintained independently.
+
+**Transfer regime**: cultures were grown in rich sporulation media, that is media containing ample resources to enable the population to reach high densities. However upon resource depletion many of the cells will sporulate and become dormant. To allow time for sporulation to reach completion, even when resource depletion was delayed by phage lysis, transfers were done every other day. Transfer were done by sampling 1% of the population, then used to inoculate fresh media. 
+Sampling: population samples were taken daily and analyzed by flow cytometry. Counts include both spores and vegetative cells. Note that **the frequency of sampling is double that of transfer**. this generates a *seasonal-like* trend in the data.
+
+```
+Flow-cytometry detection limit
+
+The flow cytometer stop conditions were either 50uL or 50,000 events, whatever came first.  
+In addition, to account for false asignments by noise I required that a gated population have at least 100 events to be taken into account. So the minimal detected population would have 100 cells in 50uL of analyzed liquid. At this point of the experiment we were analyzing x100 diluted samples.
+```
+
+```{r}
+detection.limit <- 100 * (1000/50) * 100
+```
+
+
+
+**The data**  
+
+
+```{r load data, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","coevolution_pop_density.csv"), )
+
+#add columns on host strain and phage treatment  as encoded in culture name
+d <- 
+  d%>%
+  mutate(host=case_when(grepl("W", culture) ~ "WT",
+                         grepl("SN", culture) ~ "dSpoIIE",
+                         grepl("dS", culture) ~ "dSpoIIE"))%>%
+  
+  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
+                         grepl("Ct", culture) ~ "no_Phage",
+                         grepl("ANC", line) ~ "no_Phage"))%>%
+
+   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+  #add flask to be used as grouping variable
+  mutate(flask=paste(culture,line, sep = "-"))%>%
+  #remove setup data
+  filter(Time>=0)
+
+# plot raw data
+d%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+      geom_hline(yintercept = detection.limit, color="red")+
+  geom_label(label="detection limit", x=10, y=log10(detection.limit), color="red")+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_grid(.~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e10))
+```
+
+Three points across 2 cultures, were below the detection limit. However since there was regrowth we know the cells remained above 0. We will assign these points a value that is 50% of the detection limit ($10^5$ cells/ml). We can now also summarize the data.  
+
+```{r}
+d <- d%>%
+  mutate(cell.ml=if_else(cell.ml>10, cell.ml,detection.limit/2))
+
+# plot total cells of raw data
+d%>%
+  group_by(phage,seed.bank,Time)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem,color=seed.bank), alpha=0.7)+
+      geom_line(aes(color=seed.bank), size=1, alpha=0.7)+
+      facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 2e9))+
+  labs(caption  = "mean +/- SEM")
+```
+
+
+We now want to evaluate the effect of the treatments (phage, seed bank) on the response (cell/ml). In our analysis we wish to account for temporal autocorrelation within the samples of each culture (labeled below as flask). In addition we want to account for the seasonal variation caused by transferring every other day.
+
+The approach is to conduct an repeated measures analysis of variance (RM-anova.lme), similar to analysis done by Laren and Lennon. Here is one such model:
+
+```
+# this is a mixed equation model where day and treatment are fixed factors, while cID is a random factor  
+model.ar <- lme(log.abd ~ lim * day.fac,
+                random = ~ 1 | cID, 
+                correlation=corAR1(form = ~ 1 | cID),
+                data = phage)
+```  
+
+In my understanding this model tests the response `log.abd` (abundance data) to 2 fixed effects:`lim` treatment (limiting nutrient) and `day.fac` (Time as a factor). In addition each of the chemostats (`cID`) is specified as a random effect. The auto-correlation is specified by an `corAR1` being "*an autocorrelation structure of order 1*".
+
+In the coevolution data we want to ask if the treatments of phage and seed bank had an effect on the host population density. Specifically we hypothesize that in the presence of phages seed-banks will have a greater effect on host population size, as dormancy serves as a refuge from phage infection. This would manifest as an interaction of the phage and seed banks treatment.
+
+**Adjusting the model**  
+The model for our data 2 fixed effects, phage and seed bank, in addition to time. We also have a random grouping factor specifying the 18 different individuals flasks. Since we are interested in the main effects as well as the interactions (2-way and 3-way) we can specify the following formula for a model:  
+
+```
+cell.ml ~ phage * seed.bank * Time, random = ~1|flask
+
+```
+(according to https://rcompanion.org/handbook/G_03.html: "*1 indicates that an intercept is to be fitted for each level of the random variable*".
+
+Lets run this simple model:
+```{r}
+m1 <- d%>%
+  lme(cell.ml ~ phage * seed.bank * Time ,
+        random = ~1|flask,
+      correlation = corAR1(form = ~1|flask),
+      data=.)
+
+anova.lme(m1)
+```
+
+However, in M. Larsen's example a point was made of specifying time as a factor. Let's include that.
+
+```{r}
+m2 <- d%>%
+  mutate(Time=as.factor(Time))%>%
+  lme(cell.ml ~ phage * seed.bank * Time ,
+        random = ~1|flask,
+      correlation = corAR1(form = ~1|flask),
+      data=.)
+
+anova.lme(m2)
+```
+
+We get very different results. Next I make also the seed-bank and phage treatments to be factors:
+
+```{r}
+m3 <- d%>%
+  mutate(phage=as.factor(phage))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(Time=as.factor(Time))%>%
+  lme(cell.ml ~ phage * seed.bank * Time ,
+        random = ~1|flask,
+      correlation = corAR1(form = ~1|flask),
+      data=.)
+
+anova.lme(m3)
+```
+
+That does not change the results. 
+
+Before we move I would like to address the formula passed to the correlation function.  according to the help page for corAR1:  
+
+> **form**: a one sided formula of the form ~ t, or ~ t | g, specifying a time covariate t and, optionally, a grouping factor g. A covariate for this correlation structure must be integer valued. When a grouping factor is present in form, the correlation structure is assumed to apply only to observations within the same grouping level; observations with different grouping levels are assumed to be uncorrelated. Defaults to ~ 1, which corresponds to using the order of the observations in the data as a covariate, and no groups.
+
+In my understating from various examples (e.g. https://rcompanion.org/handbook/I_09.html) *t* is the time and *g* is the experimental unit. So rather than `1|flask` we should have `Time|flask` . But that gives an error (`Error in as.character.factor(X, ...) : malformed factor`). This error is resolved if we do not transform Time into a factor. In fact the rcompanion website says that:   
+> time is the variable indicating time.  In this case, Month.  For the corAR1 structure, the time variable must be an integer variable.
+
+
+```{r}
+m4 <- d%>%
+  mutate(phage=as.factor(phage))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  # mutate(Time=as.factor(Time))%>%
+  lme(cell.ml ~ phage * seed.bank * Time ,
+        random = ~1|flask,
+      correlation = corAR1(form = ~Time|flask),
+      data=.)
+
+anova.lme(m4)
+```
+
+We now see a very different result. If we go according to the R companion site Time should be specified as an integer. Originally I recorded time as in units of transfer :0, 0.5, 1,.... If we use the unit of days we can use integers (every transfer is 2 days long.)
+
+```{r}
+m5 <- d%>%
+  mutate(phage=as.factor(phage))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(Time=as.integer(2*Time))%>%
+  lme(cell.ml ~ phage * seed.bank * Time ,
+        random = ~1|flask,
+      correlation = corAR1(form = ~Time|flask),
+      data=.)
+
+anova.lme(m5)
+```
+
+Doing this we see different results. This makes me suspect that the choice of time units has an effect on the outcome. Lets test that by multiplying time by different (even) numbers  
+
+```{r}
+n=5
+cols <- row.names(anova.lme(m5))
+pvals <- data.frame(matrix(ncol = length(cols)+1, nrow = n))
+colnames(pvals)<- c("mult", cols)
+  pvals$mult <- seq(from=2, by=2, length.out = n)
+
+for (i in 1:n)
+{
+  p <- 
+d%>%
+  mutate(phage=as.factor(phage))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(Time=as.integer(pvals$mult[i]*Time))%>%
+  lme(cell.ml ~ phage * seed.bank * Time ,
+        random = ~1|flask,
+      correlation = corAR1(form = ~Time|flask),
+      data=.)%>%
+    anova.lme()
+
+# extract main effect of seed bank p value
+pvals[i,-1] <- p$`p-value`
+}
+
+
+pvals%>%
+  #long format
+  pivot_longer(-mult, names_to="effect", values_to="p")%>%
+  ggplot(aes(mult,p, color=effect))+
+  geom_line()+
+    geom_point()+
+  geom_hline(yintercept = 0.05,linetype=2)+
+  ylab("p-value")+
+  xlab("Time multiplication coefficient")+
+  theme_bw()
+
+```
+
+The choice of Time units can shift a treatment from being non-significant to being significant.
+
+Finally, based on our knowledge of the transfer regime we can pick a better autocorrelation structure. We know that even lags match samples from the same transfer phase and odd ones are out of phase. To address this we can specify an autoregressive model with an order of 2.
+
+```{r}
+m6 <- d%>%
+  mutate(phage=as.factor(phage))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(Time=as.integer(2*Time))%>%
+  lme(cell.ml ~ phage * seed.bank * Time ,
+        random = ~1|flask,
+      correlation = corARMA(form = ~Time|flask, p=2),
+      data=.)
+
+anova.lme(m6)
+```
+
+So which model specification is correct??
+
+If this is any help here is an AIC table for the different models. The models specified like M. Larsen did (m2 and m3) have the lowest AIC.
+
+```{r}
+anova.lme(m1,m2,m3,m4,m5,m6)
+```
+
+
