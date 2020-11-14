@@ -295,6 +295,8 @@ I'm looking at the section where you are trying to specify the autoregressive fu
 Then, once you know that your model formula is specified correctly, you can choose among different autocorrelation functions with AIC to make sure you're not overfitting the model with elaborate AR functions? Does that sound reasonable?  
 ` End Quote`
 
+Here I implement that. I feed `as.factor(Time)` to the model formula and `as.integer(Time)` to the correlation structure formula. I mutliply bith by 2 ti round it to whole numbers (use days rather then transfer).    
+
 ```{r}
 m7 <- d%>%
   mutate(phage=as.factor(phage))%>%
@@ -309,25 +311,9 @@ m7 <- d%>%
 anova.lme(m7)
 ```
 
-```{r}
-m8 <- d%>%
-  mutate(phage=as.factor(phage))%>%
-  mutate(time.fct=as.factor(2*Time))%>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(Time=as.integer(2*Time))%>%
-  lme(cell.ml ~ phage * seed.bank * time.fct ,
-        random = ~1|flask,
-      correlation = corARMA(form = ~Time|flask, p=2,q=1),
-      data=.)
-
-anova.lme(m8)
-```
-
-```{r}
-anova.lme(m1,m2,m3,m4,m5,m6,m7,m8)
-```
 
 
+No I test the sensitivity of the p-values to the actual value of time. First I vary the time in the factor fed to the model formula. 
 
 ```{r}
 n=5
@@ -340,13 +326,107 @@ for (i in 1:n)
 {
   p <- 
 d%>%
-  mutate(phage=as.factor(phage))%>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-    mutate(time.fct=as.factor(2*Time))%>%
+  mutate(phage=as_factor(phage))%>%
+  mutate(seed.bank=as_factor(seed.bank))%>%
+    mutate(time.fct=as_factor(pvals$mult[i]*Time))%>%
+  mutate(Time=as.integer(2*Time))%>%
+  lme(cell.ml ~ phage * seed.bank * time.fct ,
+        random = ~1|flask,
+      correlation = corAR1(form = ~Time|flask),
+      data=.)%>%
+    anova.lme()
+
+# extract main effect of seed bank p value
+pvals[i,-1] <- p$`p-value`
+}
+
+
+pvals%>%
+  #long format
+  pivot_longer(-mult, names_to="effect", values_to="p")%>%
+  ggplot(aes(mult,p, color=effect))+
+  geom_line()+
+    geom_point()+
+  geom_hline(yintercept = 0.05,linetype=2)+
+  ylab("p-value")+
+  xlab("Time multiplication coefficient")+
+  theme_bw()
+
+```
+
+There is no effect. This makes sense as factors are encoded the same way, independent of levels.
+
+```{r}
+x <- 1:5
+str(as.factor(x))
+```
+```{r}
+x <- 2*(1:5)
+str(as.factor(x))
+```
+
+Now I will vary the integer feeding into the correlation formula
+
+```{r}
+n=5
+cols <- row.names(anova.lme(m5))
+pvals <- data.frame(matrix(ncol = length(cols)+1, nrow = n))
+colnames(pvals)<- c("mult", cols)
+  pvals$mult <- seq(from=2, by=2, length.out = n)
+
+for (i in 1:n)
+{
+  p <- 
+d%>%
+  mutate(phage=as_factor(phage))%>%
+  mutate(seed.bank=as_factor(seed.bank))%>%
+    mutate(time.fct=as_factor(2*Time))%>%
   mutate(Time=as.integer(pvals$mult[i]*Time))%>%
   lme(cell.ml ~ phage * seed.bank * time.fct ,
         random = ~1|flask,
       correlation = corAR1(form = ~Time|flask),
+      data=.)%>%
+    anova.lme()
+
+# extract main effect of seed bank p value
+pvals[i,-1] <- p$`p-value`
+}
+
+
+pvals%>%
+  #long format
+  pivot_longer(-mult, names_to="effect", values_to="p")%>%
+  ggplot(aes(mult,p, color=effect))+
+  geom_line()+
+    geom_point()+
+  geom_hline(yintercept = 0.05,linetype=2)+
+  ylab("p-value")+
+  xlab("Time multiplication coefficient")+
+  theme_bw()
+
+```
+
+Here there is a difference. It appears the the time integer is doing something more than telling the order. The value also counts.
+
+
+```{r}
+n=5
+cols <- row.names(anova.lme(m5))
+pvals <- data.frame(matrix(ncol = length(cols)+1, nrow = n))
+colnames(pvals)<- c("mult", cols)
+  pvals$mult <- seq(from=1, by=1, length.out = n)
+
+for (i in 1:n)
+{
+  p <- 
+d%>%
+  mutate(phage=as_factor(phage))%>%
+  mutate(seed.bank=as_factor(seed.bank))%>%
+    mutate(time.fct=as_factor(2*Time))%>%
+  mutate(Time=pvals$mult[i]*Time)%>%
+  lme(cell.ml ~ phage * seed.bank * time.fct ,
+        random = ~1|flask,
+      correlation = corCAR1(form = ~Time|flask),
       data=.)%>%
     anova.lme()
 
