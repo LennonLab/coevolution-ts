@@ -834,14 +834,15 @@ for(Q in c(0:2)){
   for (P in c(1:(10-2*Q))){ 
     
         #this fllowing combination does not work: "iteration limit reached without convergence"
-    # if(P>=4 & Q==2) next
+    if(P>=10 & Q==0) next
+    if(P>=4 & Q==2) next
     
     cur.model <- 
-        d%>% 
+        d.4stat%>% 
       filter(host=="WT")%>%
   # looking only at total cells (cell.ml)
-    lme(perc.spore ~ phage*seed.bank * Time , random = ~1|flask, 
-            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
+    lme(perc.spore ~ phage*seed.bank * time.fct , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
             data = .)
     
     pq.aic <- 
@@ -869,7 +870,7 @@ I will test the best 5 models against AR1,
 
 ### compare AR1 with ARMA
 ```{r}
-
+ 
 l.rm <- list()
 
 pq.best <- pq.aic%>%
@@ -877,11 +878,11 @@ pq.best <- pq.aic%>%
 
 for (i in 1:nrow(pq.best)){
   l.rm[[i]] <- 
-        d%>% 
+        d.4stat%>% 
       filter(host=="WT")%>%
   # looking only at total spore (spore.ml)
-    lme(perc.spore ~ phage*seed.bank * Time , random = ~1|flask,
-        correlation = corARMA(form = ~ 1 | flask,
+    lme(perc.spore ~ phage*seed.bank * time.fct , random = ~1|flask,
+        correlation = corARMA(form = ~ Time | flask,
                               p=pq.best$p[i],q=pq.best$q[i]),
             data = .)
     
@@ -890,11 +891,11 @@ for (i in 1:nrow(pq.best)){
 
 # add corAR1 to list
 l.rm[[i+1]] <- 
-        d%>% 
+        d.4stat%>% 
       filter(host=="WT")%>%
   # looking only at total spore (spore.ml)
-    lme(perc.spore ~ phage*seed.bank * Time , random = ~1|flask,
-            correlation = corAR1(form = ~ 1 | flask),
+    lme(perc.spore ~ phage*seed.bank * time.fct , random = ~1|flask,
+            correlation = corAR1(form = ~ Time | flask),
             data = .)
 
 
@@ -912,19 +913,31 @@ anova.lme(l.rm[[aic.l[6]]],
           l.rm[[aic.l[1]]])
 ```
 
-The first 2 best models are comparable and not significantly better than the third one. Looking at model with lower DF, model 1:
+The first model (no. 6) is significantly better than the second one. 
 
 ```{r}
 #display best model results
-summary(l.rm[[aic.l[1]]])
-  anova.lme(l.rm[[aic.l[1]]])
+getCall(l.rm[[aic.l[6]]])
+
+  anova.lme(l.rm[[aic.l[6]]])
 ```
 
-**No significant effect of seed.bank treatment on percent spore in the population density.**
+**There is a significant interaction of  all 2-way interactions on percent spore in the population, but not for the 3-way.**
 
 How sensetive would the result be to model selected?
 ```{r}
-map(l.rm,anova.lme)
+tmp <- map(l.rm, anova.lme)
+tmp1 <- map(l.rm, getCall)
+
+for(i in 1:6){
+  print(tmp1[[i]])
+  if(i<6) print(paste("p=",pq.best$p[i],"q=",pq.best$q[i]))
+  
+  print(tmp[[i]])
+
+  print("--+--+--+--+--+--+--+--")
+  print("                       ")
+}
 ```
 
-All models have no significant effects for seed bank on percent spores.
+One of the models (no. 2) has the 3-way intercaction significant, and all models but the AR1 have the seed-bank:phage interaction as non significant.
