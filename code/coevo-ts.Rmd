@@ -537,10 +537,40 @@ cell.rm.obs <-
 anova(cell.rm.obs)
 
 
-plot(cell.rm.obs)
+plot(cell.rm.obs, type='l')
 # # Use `lsmeans` package for time-corrected marginal means
 # lsmeans(cell.rm.obs, ~seed.bank+phage)  %>% plot()+theme_cowplot()
+
+
 ```
+
+# testing for staionarity
+
+```{r}
+d.DF <- tibble()
+
+for(f in unique(d$flask)){
+  print(f)
+}
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+    filter(flask==f)%>%
+  
+  #make time an integer for corelation structure
+  # by converting to days as time unit
+  mutate(Time=as.integer(2*Time))%>%
+  
+  # for the lme model all fixed effects need to be factors
+  mutate(time.fct=as.factor(Time))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(phage=as.factor(phage))-> tmp.ts
+    # select(Time,cell.ml)%>%ts() 
+df <- tseries::adf.test(tmp.ts$cell.ml)
+broom(glance)
+```
+
+
 #####################
 #
 # *stopped here*
