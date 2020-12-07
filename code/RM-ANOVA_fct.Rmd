@@ -358,18 +358,20 @@ This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q
 pq.aic <- tibble(p=1, q=1,aic=1)%>%
   filter(p>1)
   
-# Playing around with p&q I found the sappce in which the model conerges is limited
+# Playing around with p&q I found the sappce in which the model convergence is limited
 for(Q in c(0:2)){ 
-  for (P in c(2:(10-2*Q))){ 
+  for (P in c(1:(10-3*Q))){ 
     
     #this fllowing combination does not work: "iteration limit reached without convergence"
+    if(P>=1 & Q==2) next
+    if(P>=8 & Q==0) next
     if(P>=7 & Q==1) next
-    if(P>=3 & Q==2) next
+    # if(P>=3 & Q==2) next
 
     cur.model <- 
-        d%>% 
+        d.4stat%>% 
   # looking only at total cells (cell.ml)
-    lme(cell.ml ~ phage * host * Time , random = ~1|flask, 
+    lme(cell.ml ~ phage * seed.bank * time.fct , random = ~1|flask, 
             correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
             data = .)
     
@@ -405,9 +407,9 @@ pq.best <- pq.aic%>%
 
 for (i in 1:nrow(pq.best)){
   l.rm[[i]] <- 
-    d%>%
+    d.4stat%>%
     # looking only at total cells (cell.ml)
-    lme(cell.ml ~ phage * host * Time , random = ~1|flask, 
+    lme(cell.ml ~ phage * host * time.fct , random = ~1|flask, 
             correlation = corARMA(form = ~ Time | flask,
                                   p=pq.best$p[i],q=pq.best$q[i]),
             data = .)
@@ -417,9 +419,9 @@ for (i in 1:nrow(pq.best)){
 
 # add corAR1 to list
 l.rm[[i+1]] <- 
-  d%>%
+  d.4stat%>%
   # looking only at total cells (cell.ml)
-    lme(cell.ml ~ phage * host * Time , random = ~1|flask, 
+    lme(cell.ml ~ phage * host * time.fct , random = ~1|flask, 
             correlation = corAR1(form = ~ Time | flask),
             data = .)
 
@@ -438,39 +440,35 @@ anova.lme(l.rm[[aic.l[6]]],
           l.rm[[aic.l[1]]])
 ```
 
-The best model is not significantly better than any of the other ARMA models. Looking at model 4, has the least degrees of freedom (df=14) :
+The best model is not significantly better than any of the other ARMA models. Looking at model 4, has the least degrees of freedom (df=119), This is the coAR1 model :
 
 ```{r}
 #display best model results
-summary(l.rm[[aic.l[1]]])
-  anova.lme(l.rm[[aic.l[1]]])
+getCall(l.rm[[aic.l[4]]])
+  car::Anova(l.rm[[aic.l[4]]])
 ```
 
-The model wirth ARMA(P=2,Q=1) was chosen. 
-**No significant effect of host on population density at any level, main effect or with interaction.**
+The model wirth coAR1 was chosen. 
+**There is a significant interaction between phage,seed.bank and time effecting population density.**
 
 
 How sensetive would the result be to model selected?
 ```{r}
-map(l.rm,anova.lme)
+tmp <- map(l.rm, car::Anova)
+tmp1 <- map(l.rm, getCall)
+
+for(i in 1:6){
+  print(tmp1[[i]])
+  if(i<6) print(paste("p=",pq.best$p[i],"q=",pq.best$q[i]))
+  
+  print(tmp[[i]])
+
+  print("--+--+--+--+--+--+--+--")
+  print("                       ")
+}
 ```
 
-All models show the same story:  
-* The interaction of phage and time has the most significant influence on cell density.  
-* Seed bank is not significant.
-
-```{r}
-    d%>%
-  # filter(Time>3)%>%
-  # filter(phage=="SPO1")%>%
-    # looking only at total cells (cell.ml)
-    lme(cell.ml ~  seed.bank * phage *Time, random = ~1|flask,
-            # correlation = corARMA(form = ~ Time | flask,
-            #                       p=2,q=1),
-        correlation = corAR1(form = ~Time|flask),
-            data = .)%>%
-  anova.lme()
-```
+All models show the same story: as sbove.
 
 
 =================  
