@@ -533,7 +533,7 @@ for(Q in c(0:2)){
       filter(phage=="SPO1")%>%
   # looking only at total cells (cell.ml)
     lme(phage.ml ~ seed.bank * time.fct , random = ~1|flask, 
-            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
+            correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
             data = .)
     
     pq.aic <- 
@@ -655,7 +655,7 @@ d%>%
       theme(legend.position = "bottom",
             text=element_text(size=14))+
       ylab("spore/ml (log)")+
-      coord_cartesian(ylim = c(1e5, 1e10))
+      coord_cartesian(ylim = c(5e5, 1e9))
 ```
 
 All points usable.
@@ -678,14 +678,14 @@ for(Q in c(0:2)){
   for (P in c(1:(10-2*Q))){ 
     
         #this fllowing combination does not work: "iteration limit reached without convergence"
-    if(P>=5 & Q==2) next
+    if(P>=3 & Q==2) next
     
     cur.model <- 
-        d%>% 
+        d.4stat%>% 
       filter(host=="WT")%>%
   # looking only at total cells (cell.ml)
-    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask, 
-            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
+    lme(spore.ml ~ phage*seed.bank * time.fct , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
             data = .)
     
     pq.aic <- 
@@ -721,10 +721,10 @@ pq.best <- pq.aic%>%
 
 for (i in 1:nrow(pq.best)){
   l.rm[[i]] <- 
-        d%>% 
+        d.4stat%>% 
       filter(host=="WT")%>%
   # looking only at total spore (spore.ml)
-    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask,
+    lme(spore.ml ~ phage*seed.bank * time.fct , random = ~1|flask,
         correlation = corARMA(form = ~ 1 | flask,
                               p=pq.best$p[i],q=pq.best$q[i]),
             data = .)
@@ -734,10 +734,10 @@ for (i in 1:nrow(pq.best)){
 
 # add corAR1 to list
 l.rm[[i+1]] <- 
-        d%>% 
+        d.4stat%>% 
       filter(host=="WT")%>%
   # looking only at total spore (spore.ml)
-    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask,
+    lme(spore.ml ~ phage*seed.bank * time.fct , random = ~1|flask,
             correlation = corAR1(form = ~ 1 | flask),
             data = .)
 
@@ -756,47 +756,39 @@ anova.lme(l.rm[[aic.l[6]]],
           l.rm[[aic.l[1]]])
 ```
 
-The first 2 best models are comparable and not significantly better than the third one. Looking at model with lower DF, model 1:
+All models are comparable. There are 2 model with lowest DF, models 1 and 2. They are actually the same model: model 1 has P=1, Q=0, which is a coAR1 model.
+
+```{r}
+getCall(l.rm[[aic.l[1]]])
+getCall(l.rm[[aic.l[2]]])
+```
 
 ```{r}
 #display best model results
-summary(l.rm[[aic.l[1]]])
-  anova.lme(l.rm[[aic.l[1]]])
+getCall(l.rm[[aic.l[2]]])
+  anova.lme(l.rm[[aic.l[2]]])
 ```
 
-**No significant effect of seed.bank treatment on spore population density. However at a 0.1 significancIIe level, there is a seed-bank intraction with time.**
+**There is significant effect of  interaction of phage, seed.bank and time  on spore population density.**
 
 How sensetive would the result be to model selected?
 ```{r}
-map(l.rm,anova.lme)
+tmp <- map(l.rm, anova.lme)
+tmp1 <- map(l.rm, getCall)
+
+for(i in 1:6){
+  print(tmp1[[i]])
+  if(i<6) print(paste("p=",pq.best$p[i],"q=",pq.best$q[i]))
+  
+  print(tmp[[i]])
+
+  print("--+--+--+--+--+--+--+--")
+  print("                       ")
+}
 ```
 
-The seed-bank:time interaction is hovering around 0.05, some models have it above and some below.
+The phage:seed-bank:time interaction is hovering closely below 0.05, with 1 model (ARMA: p=3,q=0) having it above 0.05 at 0.0534.
 
-
-## Post hoc
-
-comparing means across seed bank: 
-```{r, warning=F, message=F}
-source(here("code","functions","plot_TukeyHSD.R"))
-
-tuk.p <- TukeyHSD(aov(spore.ml~seed.bank,
-                    data =d%>%
-                      filter(host=="WT")%>%
-                      filter(phage=="SPO1")))%>%
-  plot_TukeyHSD(back = "return")
-
-
-tuk.nop <- TukeyHSD(aov(spore.ml~seed.bank,
-                    data =d%>%
-                      filter(host=="WT")%>%
-                      filter(phage!="SPO1")))%>%
-  plot_TukeyHSD(back = "return")
-
-plot_grid(tuk.p,tuk.nop,labels = c("SPO1","no Phage"), nrow = 2)
-```
-
-In the no-phage lines the confidence interval for the difference between seed-bank treatments is just touching 0. This is likely the sourc of the borderline significance osbserved.
 
 
 =================  
@@ -806,10 +798,10 @@ In the no-phage lines the confidence interval for the difference between seed-ba
 =================  
 
 ```{r}
-d <- d%>%
+d.4stat <- d.4stat%>%
   mutate(perc.spore=100*spore.ml/cell.ml)
 
-d%>%
+d.4stat%>%
   filter(host=="WT")%>%
     ggplot(aes(x=Time, y=perc.spore))+
     geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
@@ -842,7 +834,7 @@ for(Q in c(0:2)){
   for (P in c(1:(10-2*Q))){ 
     
         #this fllowing combination does not work: "iteration limit reached without convergence"
-    if(P>=4 & Q==2) next
+    # if(P>=4 & Q==2) next
     
     cur.model <- 
         d%>% 
