@@ -194,8 +194,19 @@ d.decomp.w%>%
 
 
 ```{r}
+d.decomp.w%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 2e9))
 
-# plot total cells of raw data
+# plot total cells of  data
 d.decomp.w%>%
   group_by(phage,seed.bank,Time)%>%
   summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
@@ -210,7 +221,7 @@ d.decomp.w%>%
             text=element_text(size=14))+
       ylab("cell/ml (log)")+
       coord_cartesian(ylim = c(1e5, 2e9))
-
+ 
 
 ```
 
