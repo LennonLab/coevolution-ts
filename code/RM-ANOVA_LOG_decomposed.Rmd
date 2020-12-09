@@ -544,11 +544,11 @@ d.4stat%>%
       geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
       theme_bw()+
       panel_border()+
-      scale_y_log10()+
+      # scale_y_log10()+
       theme(legend.position = "bottom",
             text=element_text(size=14))+
       ylab("phage/ml (log)")+
-      coord_cartesian(ylim = c(1e5, 1e10))
+      coord_cartesian(ylim = c(7, 10))
 ```
 
 Here I will remove time 0, the input phage
@@ -586,7 +586,9 @@ for(Q in c(0:2)){
   for (P in c(1:(10-2*Q))){ 
     
         #this fllowing combination does not work: "iteration limit reached without convergence"
-    # if(P>=6 & Q==2) next
+    if(P>=10 & Q==0) next
+    if(P==4 & Q==1) next
+    if(P>=8 & Q==1) next
     
     cur.model <- 
         d.4stat%>% 
