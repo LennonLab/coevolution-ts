@@ -81,8 +81,13 @@ Points with missing data:
 d%>%
   filter(cell.ml<10)
 ```
+ 
+ These are all veg cells:
 
-
+```{r}
+d%>%
+  filter(veg.ml<10)
+```
 ---  
 
 **Flow-cytometry detection limit**
@@ -104,7 +109,8 @@ I will use $1X10^5$, half the detection limit dor missing value points
 
 ```{r}
 d <- d%>%
-  mutate(cell.ml=if_else(cell.ml>10, cell.ml,detection.limit/2))
+  mutate(cell.ml=if_else(cell.ml>10, cell.ml,detection.limit/2))%>%
+  mutate(veg.ml=if_else(veg.ml>10, veg.ml,detection.limit/2))
 # plot total cells of raw data
 d%>%
     ggplot(aes(x=Time, y=cell.ml))+
@@ -975,6 +981,7 @@ for(Q in c(0:2)){
     
         #this fllowing combination does not work: "iteration limit reached without convergence"
     if(P>=9 & Q==0) next
+    if(P==3 & Q==1) next
     if(P>=8 & Q==1) next
     if(P==1 & Q==2) next
     if(P==3 & Q==2) next
