@@ -284,7 +284,7 @@ The best model is not significantly better than any of the other ARMA models. Lo
 #display best model results
 tmp <- summary(l.rm[[aic.l[6]]])
 tmp$call
-  car::Anova(l.rm[[aic.l[6]]])
+  anova(l.rm[[aic.l[6]]])
 ```
 
 The model coAR1 was chosen. 
@@ -293,7 +293,7 @@ The model coAR1 was chosen.
 
 How sensetive would the result be to model selected?
 ```{r}
-tmp <- map(l.rm, car::Anova)
+tmp <- map(l.rm, anova.lme)
 tmp1 <- map(l.rm, getCall)
 
 for(i in 1:6){
@@ -301,9 +301,6 @@ for(i in 1:6){
   if(i<6) print(paste("p=",pq.best$p[i],"q=",pq.best$q[i]))
   
   print(tmp[[i]])
-
-  print("--+--+--+--+--+--+--+--")
-  print("                       ")
 }
 ```
 
@@ -526,10 +523,11 @@ for(Q in c(0:2)){
   for (P in c(1:(10-2*Q))){ 
     
         #this fllowing combination does not work: "iteration limit reached without convergence"
-    if(P>=6 & Q==2) next
+    # if(P>=6 & Q==2) next
     
     cur.model <- 
         d.4stat%>% 
+      filter(Time!=0)%>%
       filter(phage=="SPO1")%>%
   # looking only at total cells (cell.ml)
     lme(phage.ml ~ seed.bank * time.fct , random = ~1|flask, 
@@ -569,7 +567,8 @@ pq.best <- pq.aic%>%
 
 for (i in 1:nrow(pq.best)){
   l.rm[[i]] <- 
-    d.4stat%>%  
+    d.4stat%>% 
+    filter(Time!=0)%>%
     filter(phage=="SPO1")%>%
   # looking only at phages (phage.ml)
     lme(phage.ml ~ seed.bank * time.fct , random = ~1|flask, 
@@ -584,6 +583,7 @@ for (i in 1:nrow(pq.best)){
 l.rm[[i+1]] <- 
   d.4stat%>%
   filter(phage=="SPO1")%>%
+  filter(Time!=0)%>%
  # looking only at phages (phage.ml)
     lme(phage.ml ~ seed.bank * time.fct , random = ~1|flask, 
             correlation = corAR1(form = ~ 1 | flask),
@@ -614,7 +614,7 @@ getCall(l.rm[[aic.l[2]]])
 ```{r}
 #display best model results
 getCall(l.rm[[aic.l[2]]])
-  anova.lme(l.rm[[aic.l[2]]])
+  anova(l.rm[[aic.l[2]]])
 ```
 
 **There is a significant effect of seed.bank and time on phage population density.**
