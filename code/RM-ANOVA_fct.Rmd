@@ -442,7 +442,7 @@ The best model is not significantly better than any of the other ARMA models. Lo
 ```{r}
 #display best model results
 getCall(l.rm[[aic.l[4]]])
-  car::Anova(l.rm[[aic.l[4]]])
+  anova.lme(l.rm[[aic.l[4]]])
 ```
 
 The model wirth coAR1 was chosen. 
@@ -451,7 +451,7 @@ The model wirth coAR1 was chosen.
 
 How sensetive would the result be to model selected?
 ```{r}
-tmp <- map(l.rm, car::Anova)
+tmp <- map(l.rm, anova.lme)
 tmp1 <- map(l.rm, getCall)
 
 for(i in 1:6){
@@ -459,9 +459,6 @@ for(i in 1:6){
   if(i<6) print(paste("p=",pq.best$p[i],"q=",pq.best$q[i]))
   
   print(tmp[[i]])
-
-  print("--+--+--+--+--+--+--+--")
-  print("                       ")
 }
 ```
 
@@ -621,7 +618,7 @@ getCall(l.rm[[aic.l[2]]])
 
 How sensetive would the result be to model selected?
 ```{r}
-tmp <- map(l.rm, car::Anova)
+tmp <- map(l.rm, anova.lme)
 tmp1 <- map(l.rm, getCall)
 
 for(i in 1:6){
@@ -629,9 +626,6 @@ for(i in 1:6){
   if(i<6) print(paste("p=",pq.best$p[i],"q=",pq.best$q[i]))
   
   print(tmp[[i]])
-
-  print("--+--+--+--+--+--+--+--")
-  print("                       ")
 }
 ```
 
@@ -781,9 +775,6 @@ for(i in 1:6){
   if(i<6) print(paste("p=",pq.best$p[i],"q=",pq.best$q[i]))
   
   print(tmp[[i]])
-
-  print("--+--+--+--+--+--+--+--")
-  print("                       ")
 }
 ```
 
@@ -934,9 +925,6 @@ for(i in 1:6){
   if(i<6) print(paste("p=",pq.best$p[i],"q=",pq.best$q[i]))
   
   print(tmp[[i]])
-
-  print("--+--+--+--+--+--+--+--")
-  print("                       ")
 }
 ```
 
