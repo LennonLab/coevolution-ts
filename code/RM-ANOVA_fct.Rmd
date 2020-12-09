@@ -1076,4 +1076,4 @@ for(i in 1:6){
 }
 ```
 
-All the models say the same thing.
+All the models say the same thing. 
