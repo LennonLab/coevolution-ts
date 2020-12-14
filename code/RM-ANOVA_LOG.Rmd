@@ -152,6 +152,7 @@ rm.ar1 <-
   d.4stat%>%
   # looking only at total cells (cell.ml)
     lme(cell.ml ~ phage * seed.bank * time.fct ,
+    # lme(log10(cell.ml) ~ phage * seed.bank * time.fct ,
         random = ~1|flask, 
         correlation = corAR1(form = ~ Time | flask),
         data = .)
@@ -161,16 +162,188 @@ anova.lme(rm.ar1)
 
 ```{r}
 broom.mixed::augment(rm.ar1)%>%
-  ggplot(aes(.fitted, .resid)) +
-  geom_point(aes(color=Time))+#aes(color=phage, shape=seed.bank)) +
-  # scale_shape_manual(values = c(21:25))+
-  scale_y_log10()+
-  scale_x_log10()+
-  facet_wrap(seed.bank~phage, scales = "free")+
+  ggplot(aes(Time,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_line(aes(color=line))+
+  facet_grid(seed.bank~phage)+
   theme_cowplot()+panel_border()
+
+broom.mixed::augment(rm.ar1)%>%
+  ggplot(aes(seed.bank,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_point(aes(color=line), position = position_dodge(width = .5))+
+  facet_wrap(~phage)+
+  theme_cowplot()+panel_border()
+
+broom.mixed::augment(rm.ar1)%>%
+ggpubr::ggdensity(., x = ".resid", color = "line") +
+  scale_x_continuous(limits = c(-2e8, 2e8)) +
+  ggpubr::stat_overlay_normal_density(aes(color=line), linetype = "dashed")+
+  facet_grid(seed.bank~phage)
 ```
 
 
+
+# using the corAR1 model  - log transformed data
+
+```{r}
+rm.ar1.log <- 
+  d.4stat%>%
+  # looking only at total cells (cell.ml)
+    # lme(cell.ml ~ phage * seed.bank * time.fct ,
+    lme(log10(cell.ml) ~ phage * seed.bank * time.fct ,
+        random = ~1|flask, 
+        correlation = corAR1(form = ~ Time | flask),
+        data = .)
+
+anova.lme(rm.ar1.log)
+```
+
+```{r}
+broom.mixed::augment(rm.ar1.log)%>%
+  ggplot(aes(Time,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_line(aes(color=line))+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+broom.mixed::augment(rm.ar1.log)%>%
+  ggplot(aes(seed.bank,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_point(aes(color=line), position = position_dodge(width = .5))+
+  facet_wrap(~phage)+
+  theme_cowplot()+panel_border()
+
+broom.mixed::augment(rm.ar1.log)%>%
+ggpubr::ggdensity(., x = ".resid", color = "line") +
+  scale_x_continuous(limits = c(-1, 1)) +
+  ggpubr::stat_overlay_normal_density(aes(color=line), linetype = "dashed")+
+  facet_grid(seed.bank~phage)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+tmp <- broom.mixed::augment(rm.ar1)
+
+tmp%>%
+  filter(phage=="no_Phage")%>%
+  filter(seed.bank=="none")%>%
+  filter(line=="L1")%>%
+  pull(cell.ml)%>%
+Box.test(., fitdf = 0, type="Lj")
+
+ggpubr::ggdensity(tmp, x = ".resid", fill = "lightgray", title = "residuals") +
+  # scale_x_continuous(limits = c(3, 12)) +
+  ggpubr::stat_overlay_normal_density(color = "red", linetype = "dashed")+
+  facet_grid(phage~seed.bank)
+  
+d%>%
+  filter(phage=="no_Phage")%>%
+  filter(seed.bank=="none")%>%
+  filter(line=="L1")%>%
+  pull(cell.ml)%>%
+  diff()
+
+```
+
+# Differencing
+```{r}
+# removing bi daily fluctuation
+d.4stat%>%
+  mutate(transfer=if_else(as.logical(Time%%2), "mid", "end"))%>%
+  group_by(transfer,phage,seed.bank, line)%>%
+  summarise(m=mean(cell.ml), v=sd(cell.ml))%>%
+  ggplot(aes(x=line, y=m))+
+  geom_pointrange(aes(ymin=m-v, ymax=m+v, color=transfer), position=position_dodge(width = .5))+
+  facet_grid(seed.bank~phage)
+```
+
+
+```{r}
+# removing bi daily fluctuation
+d.4stat%>%
+  mutate(transfer=if_else(as.logical(Time%%2), "mid", "end"))%>%
+  group_by(transfer,phage,seed.bank,line)%>%
+  mutate(t.cells =cell.ml/sd(cell.ml))%>%
+  ungroup()%>%
+  ggplot(aes(x=Time, y=t.cells))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      # scale_x_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")
+  
+```
+
+```{r}
+d.dif <- d.4stat%>%
+  mutate(cell.ml=log10(cell.ml))%>%
+  group_by(flask)%>%
+  mutate(dif=c(NA, diff(cell.ml)))
+
+# plot total cells of diff data
+d.dif%>%
+  filter(!is.na(dif))%>%
+  # mutate(transfer=if_else(as.logical(Time%%2), "mid", "end"))%>%
+  # group_by(transfer,phage,seed.bank,line)%>%
+  # mutate(t.cells =dif/sd(dif))%>%
+    ggplot(aes(x=Time, y=dif))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      # scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")
+      # coord_cartesian(ylim = c(1e5, 2e9))
+
+```
+
+
+
+
+```{r}
+car::leveneTest(cell.ml ~ seed.bank, data = d.dif)
+```
+
+```{r}
+d.4stat%>%
+  # filter(phage=="SPO1")%>%
+  # group_by(seed.bank,flask)%>%
+  # summarise(n=n())
+  friedman.test(cell.ml ~ Time|flask, data = . )
+
+```
 
 
 #########################################
