@@ -1,9 +1,11 @@
 ---
 title: "RM-ANOVA for coevolution with a seed bank"
-output: html_notebook
+output: 
+  html_notebook:
+    code_folding: hide
 editor_options: 
   chunk_output_type: inline
-  code_folding: hide
+  
 ---
 
 ```{r setup, include=FALSE}
@@ -23,6 +25,8 @@ library(cowplot)
 
 
 library(nlme)
+library(car)
+library(ggpubr)
 
 # save the state of the project library to the lockfile (called renv.lock),
 renv::snapshot()
@@ -102,7 +106,7 @@ detection.limit <- 100 * (1000/50) * 100
 100 events X $1000/50\mu L$ X100 = `r detection.limit` 
 
 I will use $1X10^5$, half the detection limit dor missing value points
----
+ 
 
 ```{r}
 d <- d%>%
@@ -126,8 +130,11 @@ d%>%
       coord_cartesian(ylim = c(1e5, 2e9))
 ```
 
+---
 
-# Adjusting variable types for lme
+# RM-ANOVA with raw data (untransformed)
+
+### Adjusting variable types for lme
 
 In the lme models I will be using the fixd effects need to be secified as factore, in this experiment these ar: *Phage, seed.bank and time*. However for the autocorrelation specification time needs to be specified as an integer. To fulfill both requirements I will use for the time unit the experimental day rather than transfer, since we measured onc a day but twice per transfer. This will be simplty *time x 2*. I will then make fom that a separate varible which will be the factor of the time.
 
@@ -145,14 +152,23 @@ d.4stat <-
   mutate(phage=as.factor(phage))
 ```
 
-# test data for homogeneity of variances
+#### test data for homogeneity of variances
+
+This is an assumption of ANOVA tests.
+
+Based on : https://www.datanovia.com/en/lessons/homogeneity-of-variance-test-in-r/
+Using "Levene’s test" that according to website is the most commonly used test for this purpose. This tets has a null hypothesis of equal variance. So getting P>0.05 suggests homogenic variance.  
+
 ```{r}
 # Levene's test with multiple independent variables
 car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat)
 ```
 
+The data does not fulfill the assumption of equal variance across test groups.
 
-# RM-Anova with  corAR1 covariance structure
+## RM-Anova with  corAR1 covariance structure
+
+I continue the analysis with the untatnsformed data. 
 
 ```{r}
 rm.ar1 <- 
@@ -168,8 +184,11 @@ anova.lme(rm.ar1)
 ```
 
 
-Looking at residuals  
-```{r}
+#### Distribution of model residuals  
+```{r,fig.height=10, fig.width=15}
+p1 <- ggqqplot(residuals(rm.ar1))
+
+p2 <-
 broom.mixed::augment(rm.ar1)%>%
   ggplot(aes(Time,.resid)) +
   geom_hline(yintercept = 0)+
@@ -177,6 +196,7 @@ broom.mixed::augment(rm.ar1)%>%
   facet_grid(seed.bank~phage)+
   theme_cowplot()+panel_border()
 
+p3 <-
 broom.mixed::augment(rm.ar1)%>%
   ggplot(aes(seed.bank,.resid)) +
   geom_hline(yintercept = 0)+
@@ -185,31 +205,32 @@ broom.mixed::augment(rm.ar1)%>%
   facet_wrap(~phage)+
   theme_cowplot()+panel_border()
 
+p4 <- 
 broom.mixed::augment(rm.ar1)%>%
   ggplot(aes(x = .resid, color = line))+
   geom_density()+
   facet_grid(seed.bank~phage)+
   theme_cowplot()+panel_border()
 
+plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
+
 ```
 
+The QQ-plot (a) sjows large departure of residulas from normality. 
+ Shapiro test for normality of residuals applied to each of the groups (individual culture).  
 ```{r}
 d.resid <- 
   broom.mixed::augment(rm.ar1)%>%
   select(.resid,phage,seed.bank,line)%>%
   group_by(phage,seed.bank,line)%>%
-summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
+summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value,.groups = 'drop')%>%
   mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
   arrange(desc(p.shapiro))%>%
   print()
 
 n.norm=sum(d.resid$normal)
 
-broom.mixed::augment(rm.ar1)%>%
-  select(.resid,phage,seed.bank,line)%>%
-  group_by(phage,seed.bank,line)%>%
-summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
-  mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
+d.resid%>%
   arrange(desc(p.shapiro))%>%
   ungroup()%>%
   mutate(rank=row_number())%>%
@@ -222,8 +243,11 @@ summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
   theme_cowplot()
 ```
 
+Groups with p.shapiro>0.05 are considered normally distributed (Above the res lie, left of the blue line). Here we have 8 such groups (of 18).
 
 # log transformed data
+
+This is the standard approach to reduce data variability when data encomapsses several orders of magnitude.  
 ```{r}
 d.4stat <- 
   d%>%
@@ -251,14 +275,15 @@ d.4stat %>%
 
 
 
-# test data for homogeneity of variances
+#### test data for homogeneity of variances  
 ```{r}
 # Levene's test with multiple independent variables
 car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat)
 ```
 
+This test indicates an increased departure from the equal variances. 
 
-# RM-Anova with  corAR1 covariance structure
+#### RM-Anova with  corAR1 covariance structure
 
 ```{r}
 rm.ar1 <- 
@@ -274,8 +299,11 @@ anova.lme(rm.ar1)
 ```
 
 
-Looking at residuals  
-```{r}
+#### Distribution of model residuals  
+```{r,fig.height=10, fig.width=15}
+p1 <- ggqqplot(residuals(rm.ar1))
+
+p2 <-
 broom.mixed::augment(rm.ar1)%>%
   ggplot(aes(Time,.resid)) +
   geom_hline(yintercept = 0)+
@@ -283,6 +311,7 @@ broom.mixed::augment(rm.ar1)%>%
   facet_grid(seed.bank~phage)+
   theme_cowplot()+panel_border()
 
+p3 <-
 broom.mixed::augment(rm.ar1)%>%
   ggplot(aes(seed.bank,.resid)) +
   geom_hline(yintercept = 0)+
@@ -291,31 +320,33 @@ broom.mixed::augment(rm.ar1)%>%
   facet_wrap(~phage)+
   theme_cowplot()+panel_border()
 
+p4 <- 
 broom.mixed::augment(rm.ar1)%>%
   ggplot(aes(x = .resid, color = line))+
   geom_density()+
   facet_grid(seed.bank~phage)+
   theme_cowplot()+panel_border()
 
+plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
+
 ```
 
+
+
+ Shapiro test for normality of residuals applied to each of the groups (individual culture).  
 ```{r}
 d.resid <- 
   broom.mixed::augment(rm.ar1)%>%
   select(.resid,phage,seed.bank,line)%>%
   group_by(phage,seed.bank,line)%>%
-summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
+summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value,.groups = 'drop')%>%
   mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
   arrange(desc(p.shapiro))%>%
   print()
 
 n.norm=sum(d.resid$normal)
 
-broom.mixed::augment(rm.ar1)%>%
-  select(.resid,phage,seed.bank,line)%>%
-  group_by(phage,seed.bank,line)%>%
-summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
-  mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
+d.resid%>%
   arrange(desc(p.shapiro))%>%
   ungroup()%>%
   mutate(rank=row_number())%>%
@@ -326,12 +357,14 @@ summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
   scale_fill_grey()+
   scale_y_log10()+
   theme_cowplot()
-
 ```
 
-More of the groups now have normally distributed residulas, but not all. 
+More of the groups (11/18) now have normally distributed residulas, but not all. 
 
 # square root transformed data
+
+Another common approaach to reducing skewness of data. I will try it out. 
+
 ```{r}
 d.4stat <- 
   d%>%
@@ -360,14 +393,15 @@ d.4stat %>%
 
 
 
-# test data for homogeneity of variances
+#### test data for homogeneity of variances
 ```{r}
 # Levene's test with multiple independent variables
 car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat)
 ```
 
+This transformation made the data have equal variance!
 
-# RM-Anova with  corAR1 covariance structure
+#### RM-Anova with  corAR1 covariance structure
 
 ```{r}
 rm.ar1 <- 
@@ -383,8 +417,11 @@ anova.lme(rm.ar1)
 ```
 
 
-Looking at residuals  
-```{r}
+#### Distribution of model residuals  
+```{r,fig.height=10, fig.width=15}
+p1 <- ggqqplot(residuals(rm.ar1))
+
+p2 <-
 broom.mixed::augment(rm.ar1)%>%
   ggplot(aes(Time,.resid)) +
   geom_hline(yintercept = 0)+
@@ -392,6 +429,7 @@ broom.mixed::augment(rm.ar1)%>%
   facet_grid(seed.bank~phage)+
   theme_cowplot()+panel_border()
 
+p3 <-
 broom.mixed::augment(rm.ar1)%>%
   ggplot(aes(seed.bank,.resid)) +
   geom_hline(yintercept = 0)+
@@ -400,31 +438,32 @@ broom.mixed::augment(rm.ar1)%>%
   facet_wrap(~phage)+
   theme_cowplot()+panel_border()
 
+p4 <- 
 broom.mixed::augment(rm.ar1)%>%
   ggplot(aes(x = .resid, color = line))+
   geom_density()+
   facet_grid(seed.bank~phage)+
   theme_cowplot()+panel_border()
 
+plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
+
 ```
 
+The QQ-plot (a) shows residulas much more close to normality. 
+ Shapiro test for normality of residuals applied to each of the groups (individual culture).  
 ```{r}
 d.resid <- 
   broom.mixed::augment(rm.ar1)%>%
   select(.resid,phage,seed.bank,line)%>%
   group_by(phage,seed.bank,line)%>%
-summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
+summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value,.groups = 'drop')%>%
   mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
   arrange(desc(p.shapiro))%>%
   print()
 
 n.norm=sum(d.resid$normal)
 
-broom.mixed::augment(rm.ar1)%>%
-  select(.resid,phage,seed.bank,line)%>%
-  group_by(phage,seed.bank,line)%>%
-summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
-  mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
+d.resid%>%
   arrange(desc(p.shapiro))%>%
   ungroup()%>%
   mutate(rank=row_number())%>%
@@ -435,332 +474,333 @@ summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
   scale_fill_grey()+
   scale_y_log10()+
   theme_cowplot()
-
 ```
 
-#########################################################
-# removing bi daily fluctuation
+More of the groups (13/18) now have normally distributed residulas, but still not all.
 
-```{r}
-# removing bi daily fluctuation
-d.4stat <- 
-  d%>%
-  # remove setup data
-  filter(Time>=0)%>%
-  #make time an integer for correlation structure
-  # by converting to days as time unit
-  mutate(Time=as.integer(2*Time))%>%
-  # for the lme model all fixed effects need to be factors
-  mutate(time.fct=as.factor(Time))%>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(phage=as.factor(phage))%>%
-  mutate(cell.ml=log10(cell.ml))%>%
-  # mutate(transfer=if_else(as.logical(Time%%2), "mid", "end"))%>%
-  # group_by(transfer,phage,seed.bank)%>%
-  # mutate(sdev =sd(cell.ml))%>%
-  # ungroup()%>%
-  # mutate(cell.ml=cell.ml-sdev)
-  group_by(flask)%>%
-  mutate(cell.ml=c(NA, diff(cell.ml)))%>%
-  filter(!is.na(cell.ml))
+<!-- ######################################################### -->
+<!-- # removing bi daily fluctuation -->
 
-# plot total cells of diff data
-d.4stat%>%
-  ggplot(aes(x=Time, y=cell.ml))+
-      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
-        facet_wrap(~phage)+
-      theme_bw()+
-      panel_border()+
-      theme(legend.position = "bottom",
-            text=element_text(size=14))+
-      ylab("cell/ml (diff)")
-```
+<!-- ```{r} -->
+<!-- # removing bi daily fluctuation -->
+<!-- d.4stat <-  -->
+<!--   d%>% -->
+<!--   # remove setup data -->
+<!--   filter(Time>=0)%>% -->
+<!--   #make time an integer for correlation structure -->
+<!--   # by converting to days as time unit -->
+<!--   mutate(Time=as.integer(2*Time))%>% -->
+<!--   # for the lme model all fixed effects need to be factors -->
+<!--   mutate(time.fct=as.factor(Time))%>% -->
+<!--   mutate(seed.bank=as.factor(seed.bank))%>% -->
+<!--   mutate(phage=as.factor(phage))%>% -->
+<!--   mutate(cell.ml=log10(cell.ml))%>% -->
+<!--   # mutate(transfer=if_else(as.logical(Time%%2), "mid", "end"))%>% -->
+<!--   # group_by(transfer,phage,seed.bank)%>% -->
+<!--   # mutate(sdev =sd(cell.ml))%>% -->
+<!--   # ungroup()%>% -->
+<!--   # mutate(cell.ml=cell.ml-sdev) -->
+<!--   group_by(flask)%>% -->
+<!--   mutate(cell.ml=c(NA, diff(cell.ml)))%>% -->
+<!--   filter(!is.na(cell.ml)) -->
 
-
-# test data for homogeneity of variances
-```{r}
-# Levene's test with multiple independent variables
-car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat)
-```
+<!-- # plot total cells of diff data -->
+<!-- d.4stat%>% -->
+<!--   ggplot(aes(x=Time, y=cell.ml))+ -->
+<!--       geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+ -->
+<!--         facet_wrap(~phage)+ -->
+<!--       theme_bw()+ -->
+<!--       panel_border()+ -->
+<!--       theme(legend.position = "bottom", -->
+<!--             text=element_text(size=14))+ -->
+<!--       ylab("cell/ml (diff)") -->
+<!-- ``` -->
 
 
-# RM-Anova with  corAR1 covariance structure
-
-```{r}
-rm.ar1 <- 
-  d.4stat%>%
-  # looking only at total cells (cell.ml)
-    lme(cell.ml ~ phage * seed.bank * time.fct ,
-    # lme(log10(cell.ml) ~ phage * seed.bank * time.fct ,
-        random = ~1|flask, 
-        correlation = corAR1(form = ~ Time | flask),
-        data = .)
-
-anova.lme(rm.ar1)
-```
+<!-- # test data for homogeneity of variances -->
+<!-- ```{r} -->
+<!-- # Levene's test with multiple independent variables -->
+<!-- car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat) -->
+<!-- ``` -->
 
 
-Looking at residuals  
-```{r}
-broom.mixed::augment(rm.ar1)%>%
-  ggplot(aes(Time,.resid)) +
-  geom_hline(yintercept = 0)+
-  geom_line(aes(color=line))+
-  facet_grid(seed.bank~phage)+
-  theme_cowplot()+panel_border()
+<!-- # RM-Anova with  corAR1 covariance structure -->
 
-broom.mixed::augment(rm.ar1)%>%
-  ggplot(aes(seed.bank,.resid)) +
-  geom_hline(yintercept = 0)+
-  geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+
-  geom_point(aes(color=line), position = position_dodge(width = .9), shape=21)+
-  facet_wrap(~phage)+
-  theme_cowplot()+panel_border()
+<!-- ```{r} -->
+<!-- rm.ar1 <-  -->
+<!--   d.4stat%>% -->
+<!--   # looking only at total cells (cell.ml) -->
+<!--     lme(cell.ml ~ phage * seed.bank * time.fct , -->
+<!--     # lme(log10(cell.ml) ~ phage * seed.bank * time.fct , -->
+<!--         random = ~1|flask,  -->
+<!--         correlation = corAR1(form = ~ Time | flask), -->
+<!--         data = .) -->
 
-broom.mixed::augment(rm.ar1)%>%
-  ggplot(aes(x = .resid, color = line))+
-  geom_density()+
-  facet_grid(seed.bank~phage)+
-  theme_cowplot()+panel_border()
-
-```
-
-```{r}
-d.resid <- 
-  broom.mixed::augment(rm.ar1)%>%
-  select(.resid,phage,seed.bank,line)%>%
-  group_by(phage,seed.bank,line)%>%
-summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
-  mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
-  arrange(desc(p.shapiro))%>%
-  print()
-
-n.norm=sum(d.resid$normal)
-
-broom.mixed::augment(rm.ar1)%>%
-  select(.resid,phage,seed.bank,line)%>%
-  group_by(phage,seed.bank,line)%>%
-summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
-  mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
-  arrange(desc(p.shapiro))%>%
-  ungroup()%>%
-  mutate(rank=row_number())%>%
-  ggplot(aes(rank, p.shapiro))+
-  geom_col(aes(fill=seed.bank, color=phage),size=1)+
-  geom_hline(yintercept = 0.05, color="red")+
-  geom_vline(xintercept = n.norm+.5, color="blue")+
-  scale_fill_grey()+
-  scale_y_log10()+
-  theme_cowplot()
-
-```
-
-More of the groups now have normally distributed residulas, but not all. 
-
-#########################################################
-# removing  fluctuation by decomposition
-
-```{r, include=FALSE}
-# initailise tibble for collecting decompsed data
-d.decomp <- 
-  tibble(Time=NA,
-         line=NA,
-         culture=NA,
-         pop=NA,
-         observed= NA,
-         trend= NA,
-         seasonal= NA,
-         random= NA)
+<!-- anova.lme(rm.ar1) -->
+<!-- ``` -->
 
 
-for (ln in levels(as.factor(d$line))){
-  for (cult in levels(as.factor(d$culture))){
-    for (pop in c("phage.ml","spore.ml","veg.ml","cell.ml")){
-      
-  #not all the lines have measurments of all the populations:
-        #Ct lines have no phage
-        #SN lines have no spores
-  # the loop skips those combinations
-      if (grepl("SN",cult) & pop=="spore.ml")
-        next
-      
-      if (grepl("Ct",cult) & pop=="phage.ml")
-        next
-      
-  tmp <- 
-    d%>%
-  filter(Time>=0)%>%
-  filter(culture==cult)%>%
-  filter(line==ln)%>%
-  select(all_of(pop))%>%
-ts(.[,pop], start=0, end=14,frequency = 2 )%>%
-  decompose()
+<!-- Looking at residuals   -->
+<!-- ```{r} -->
+<!-- broom.mixed::augment(rm.ar1)%>% -->
+<!--   ggplot(aes(Time,.resid)) + -->
+<!--   geom_hline(yintercept = 0)+ -->
+<!--   geom_line(aes(color=line))+ -->
+<!--   facet_grid(seed.bank~phage)+ -->
+<!--   theme_cowplot()+panel_border() -->
 
-  # get trend data
-  d.decomp <- 
-  tibble(Time=seq(0,14,0.5),
-         line=ln,
-         culture=cult,
-         pop=pop,
-         observed= as.vector(tmp$x),
-         trend= as.vector(tmp$trend),
-         seasonal= as.vector(tmp$seasonal),
-         random= as.vector(tmp$random))%>%
-    bind_rows(d.decomp,.)
-  tmp$trend%>%as.vector()
-  
-  #plot
-    #   ggplot2::autoplot(tmp)+
-    #     theme_bw()+
-    # ggtitle(paste(cult,ln,pop))+
-    #     ggsave(filename = here("plots","deomposition",paste(pop,cult,ln,".pdf", sep = "_")),width = 8, height = 6)
-  
-    }
+<!-- broom.mixed::augment(rm.ar1)%>% -->
+<!--   ggplot(aes(seed.bank,.resid)) + -->
+<!--   geom_hline(yintercept = 0)+ -->
+<!--   geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+ -->
+<!--   geom_point(aes(color=line), position = position_dodge(width = .9), shape=21)+ -->
+<!--   facet_wrap(~phage)+ -->
+<!--   theme_cowplot()+panel_border() -->
 
-  }
+<!-- broom.mixed::augment(rm.ar1)%>% -->
+<!--   ggplot(aes(x = .resid, color = line))+ -->
+<!--   geom_density()+ -->
+<!--   facet_grid(seed.bank~phage)+ -->
+<!--   theme_cowplot()+panel_border() -->
 
-}
+<!-- ``` -->
 
-#remove first row used to initialise
-d.decomp <- d.decomp[-1,]
+<!-- ```{r} -->
+<!-- d.resid <-  -->
+<!--   broom.mixed::augment(rm.ar1)%>% -->
+<!--   select(.resid,phage,seed.bank,line)%>% -->
+<!--   group_by(phage,seed.bank,line)%>% -->
+<!-- summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>% -->
+<!--   mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>% -->
+<!--   arrange(desc(p.shapiro))%>% -->
+<!--   print() -->
 
-#delete temporary variables
-rm(tmp,cult,ln,pop)
+<!-- n.norm=sum(d.resid$normal) -->
 
-#return to wide format
-d.decomp.w <- 
-  d.decomp%>%
-  filter(!is.na(trend))%>%
-  select(-observed,-seasonal,-random)%>%
-  pivot_wider( names_from="pop", values_from =trend)
+<!-- broom.mixed::augment(rm.ar1)%>% -->
+<!--   select(.resid,phage,seed.bank,line)%>% -->
+<!--   group_by(phage,seed.bank,line)%>% -->
+<!-- summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>% -->
+<!--   mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>% -->
+<!--   arrange(desc(p.shapiro))%>% -->
+<!--   ungroup()%>% -->
+<!--   mutate(rank=row_number())%>% -->
+<!--   ggplot(aes(rank, p.shapiro))+ -->
+<!--   geom_col(aes(fill=seed.bank, color=phage),size=1)+ -->
+<!--   geom_hline(yintercept = 0.05, color="red")+ -->
+<!--   geom_vline(xintercept = n.norm+.5, color="blue")+ -->
+<!--   scale_fill_grey()+ -->
+<!--   scale_y_log10()+ -->
+<!--   theme_cowplot() -->
 
-# #add columns on host strain,phage treatment and seed bank as encoded in culture name
-d.decomp.w <-
-   d.decomp.w%>%
-   mutate(host=case_when(grepl("W", culture) ~ "WT",
-                         grepl("SN", culture) ~ "dSpoIIE",
-                         grepl("dS", culture) ~ "dSpoIIE"))%>%
+<!-- ``` -->
 
-  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
-                         grepl("Ct", culture) ~ "no_Phage",
-                         grepl("ANC", line) ~ "no_Phage"))%>%
+<!-- More of the groups now have normally distributed residulas, but not all.  -->
 
-  mutate(seed.bank=case_when(grepl("SN", culture) ~ "none",
-                              grepl("WS", culture) ~ "short",
-                              grepl("WL", culture) ~ "long"))%>%
-   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
-  #add flask to be used as grouping variable
-  mutate(flask=paste(culture,line, sep = "-"))%>%
-  #remove setup data
-  filter(Time>=0)
+<!-- ######################################################### -->
+<!-- # removing  fluctuation by decomposition -->
+
+<!-- ```{r, include=FALSE} -->
+<!-- # initailise tibble for collecting decompsed data -->
+<!-- d.decomp <-  -->
+<!--   tibble(Time=NA, -->
+<!--          line=NA, -->
+<!--          culture=NA, -->
+<!--          pop=NA, -->
+<!--          observed= NA, -->
+<!--          trend= NA, -->
+<!--          seasonal= NA, -->
+<!--          random= NA) -->
 
 
-```
+<!-- for (ln in levels(as.factor(d$line))){ -->
+<!--   for (cult in levels(as.factor(d$culture))){ -->
+<!--     for (pop in c("phage.ml","spore.ml","veg.ml","cell.ml")){ -->
 
-```{r}
-# removing bi daily fluctuation
-d.4stat <- 
-  d.decomp.w %>%
-  # remove setup data
-  filter(Time>=0)%>%
-  #make time an integer for correlation structure
-  # by converting to days as time unit
-  mutate(Time=as.integer(2*Time))%>%
-  # for the lme model all fixed effects need to be factors
-  mutate(time.fct=as.factor(Time))%>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(phage=as.factor(phage))%>%
-  mutate(cell.ml=log10(cell.ml))
+<!--   #not all the lines have measurments of all the populations: -->
+<!--         #Ct lines have no phage -->
+<!--         #SN lines have no spores -->
+<!--   # the loop skips those combinations -->
+<!--       if (grepl("SN",cult) & pop=="spore.ml") -->
+<!--         next -->
 
-# plot total cells of diff data
-d.4stat%>%
-  ggplot(aes(x=Time, y=cell.ml))+
-      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
-        facet_wrap(~phage)+
-      theme_bw()+
-      panel_border()+
-      theme(legend.position = "bottom",
-            text=element_text(size=14))+
-      ylab("cell/ml (decomp)")
-```
+<!--       if (grepl("Ct",cult) & pop=="phage.ml") -->
+<!--         next -->
+
+<!--   tmp <-  -->
+<!--     d%>% -->
+<!--   filter(Time>=0)%>% -->
+<!--   filter(culture==cult)%>% -->
+<!--   filter(line==ln)%>% -->
+<!--   select(all_of(pop))%>% -->
+<!-- ts(.[,pop], start=0, end=14,frequency = 2 )%>% -->
+<!--   decompose() -->
+
+<!--   # get trend data -->
+<!--   d.decomp <-  -->
+<!--   tibble(Time=seq(0,14,0.5), -->
+<!--          line=ln, -->
+<!--          culture=cult, -->
+<!--          pop=pop, -->
+<!--          observed= as.vector(tmp$x), -->
+<!--          trend= as.vector(tmp$trend), -->
+<!--          seasonal= as.vector(tmp$seasonal), -->
+<!--          random= as.vector(tmp$random))%>% -->
+<!--     bind_rows(d.decomp,.) -->
+<!--   tmp$trend%>%as.vector() -->
+
+<!--   #plot -->
+<!--     #   ggplot2::autoplot(tmp)+ -->
+<!--     #     theme_bw()+ -->
+<!--     # ggtitle(paste(cult,ln,pop))+ -->
+<!--     #     ggsave(filename = here("plots","deomposition",paste(pop,cult,ln,".pdf", sep = "_")),width = 8, height = 6) -->
+
+<!--     } -->
+
+<!--   } -->
+
+<!-- } -->
+
+<!-- #remove first row used to initialise -->
+<!-- d.decomp <- d.decomp[-1,] -->
+
+<!-- #delete temporary variables -->
+<!-- rm(tmp,cult,ln,pop) -->
+
+<!-- #return to wide format -->
+<!-- d.decomp.w <-  -->
+<!--   d.decomp%>% -->
+<!--   filter(!is.na(trend))%>% -->
+<!--   select(-observed,-seasonal,-random)%>% -->
+<!--   pivot_wider( names_from="pop", values_from =trend) -->
+
+<!-- # #add columns on host strain,phage treatment and seed bank as encoded in culture name -->
+<!-- d.decomp.w <- -->
+<!--    d.decomp.w%>% -->
+<!--    mutate(host=case_when(grepl("W", culture) ~ "WT", -->
+<!--                          grepl("SN", culture) ~ "dSpoIIE", -->
+<!--                          grepl("dS", culture) ~ "dSpoIIE"))%>% -->
+
+<!--   mutate(phage=case_when(grepl("O", culture) ~ "SPO1", -->
+<!--                          grepl("Ct", culture) ~ "no_Phage", -->
+<!--                          grepl("ANC", line) ~ "no_Phage"))%>% -->
+
+<!--   mutate(seed.bank=case_when(grepl("SN", culture) ~ "none", -->
+<!--                               grepl("WS", culture) ~ "short", -->
+<!--                               grepl("WL", culture) ~ "long"))%>% -->
+<!--    mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>% -->
+<!--   #add flask to be used as grouping variable -->
+<!--   mutate(flask=paste(culture,line, sep = "-"))%>% -->
+<!--   #remove setup data -->
+<!--   filter(Time>=0) -->
 
 
-# test data for homogeneity of variances
-```{r}
-# Levene's test with multiple independent variables
-car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat)
-```
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- # removing bi daily fluctuation -->
+<!-- d.4stat <-  -->
+<!--   d.decomp.w %>% -->
+<!--   # remove setup data -->
+<!--   filter(Time>=0)%>% -->
+<!--   #make time an integer for correlation structure -->
+<!--   # by converting to days as time unit -->
+<!--   mutate(Time=as.integer(2*Time))%>% -->
+<!--   # for the lme model all fixed effects need to be factors -->
+<!--   mutate(time.fct=as.factor(Time))%>% -->
+<!--   mutate(seed.bank=as.factor(seed.bank))%>% -->
+<!--   mutate(phage=as.factor(phage))%>% -->
+<!--   mutate(cell.ml=log10(cell.ml)) -->
+
+<!-- # plot total cells of diff data -->
+<!-- d.4stat%>% -->
+<!--   ggplot(aes(x=Time, y=cell.ml))+ -->
+<!--       geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+ -->
+<!--         facet_wrap(~phage)+ -->
+<!--       theme_bw()+ -->
+<!--       panel_border()+ -->
+<!--       theme(legend.position = "bottom", -->
+<!--             text=element_text(size=14))+ -->
+<!--       ylab("cell/ml (decomp)") -->
+<!-- ``` -->
 
 
-# RM-Anova with  corAR1 covariance structure
-
-```{r}
-rm.ar1 <- 
-  d.4stat%>%
-  # looking only at total cells (cell.ml)
-    lme(cell.ml ~ phage * seed.bank * time.fct ,
-    # lme(log10(cell.ml) ~ phage * seed.bank * time.fct ,
-        random = ~1|flask, 
-        correlation = corAR1(form = ~ Time | flask),
-        data = .)
-
-anova.lme(rm.ar1)
-```
+<!-- # test data for homogeneity of variances -->
+<!-- ```{r} -->
+<!-- # Levene's test with multiple independent variables -->
+<!-- car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat) -->
+<!-- ``` -->
 
 
-Looking at residuals  
-```{r}
-broom.mixed::augment(rm.ar1)%>%
-  ggplot(aes(Time,.resid)) +
-  geom_hline(yintercept = 0)+
-  geom_line(aes(color=line))+
-  facet_grid(seed.bank~phage)+
-  theme_cowplot()+panel_border()
+<!-- # RM-Anova with  corAR1 covariance structure -->
 
-broom.mixed::augment(rm.ar1)%>%
-  ggplot(aes(seed.bank,.resid)) +
-  geom_hline(yintercept = 0)+
-  geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+
-  geom_point(aes(color=line), position = position_dodge(width = .9), shape=21)+
-  facet_wrap(~phage)+
-  theme_cowplot()+panel_border()
+<!-- ```{r} -->
+<!-- rm.ar1 <-  -->
+<!--   d.4stat%>% -->
+<!--   # looking only at total cells (cell.ml) -->
+<!--     lme(cell.ml ~ phage * seed.bank * time.fct , -->
+<!--     # lme(log10(cell.ml) ~ phage * seed.bank * time.fct , -->
+<!--         random = ~1|flask,  -->
+<!--         correlation = corAR1(form = ~ Time | flask), -->
+<!--         data = .) -->
 
-broom.mixed::augment(rm.ar1)%>%
-  ggplot(aes(x = .resid, color = line))+
-  geom_density()+
-  facet_grid(seed.bank~phage)+
-  theme_cowplot()+panel_border()
+<!-- anova.lme(rm.ar1) -->
+<!-- ``` -->
 
-```
 
-```{r}
-d.resid <- 
-  broom.mixed::augment(rm.ar1)%>%
-  select(.resid,phage,seed.bank,line)%>%
-  group_by(phage,seed.bank,line)%>%
-summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
-  mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
-  arrange(desc(p.shapiro))%>%
-  print()
+<!-- Looking at residuals   -->
+<!-- ```{r} -->
+<!-- broom.mixed::augment(rm.ar1)%>% -->
+<!--   ggplot(aes(Time,.resid)) + -->
+<!--   geom_hline(yintercept = 0)+ -->
+<!--   geom_line(aes(color=line))+ -->
+<!--   facet_grid(seed.bank~phage)+ -->
+<!--   theme_cowplot()+panel_border() -->
 
-n.norm=sum(d.resid$normal)
+<!-- broom.mixed::augment(rm.ar1)%>% -->
+<!--   ggplot(aes(seed.bank,.resid)) + -->
+<!--   geom_hline(yintercept = 0)+ -->
+<!--   geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+ -->
+<!--   geom_point(aes(color=line), position = position_dodge(width = .9), shape=21)+ -->
+<!--   facet_wrap(~phage)+ -->
+<!--   theme_cowplot()+panel_border() -->
 
-broom.mixed::augment(rm.ar1)%>%
-  select(.resid,phage,seed.bank,line)%>%
-  group_by(phage,seed.bank,line)%>%
-summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>%
-  mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
-  arrange(desc(p.shapiro))%>%
-  ungroup()%>%
-  mutate(rank=row_number())%>%
-  ggplot(aes(rank, p.shapiro))+
-  geom_col(aes(fill=seed.bank, color=phage),size=1)+
-  geom_hline(yintercept = 0.05, color="red")+
-  geom_vline(xintercept = n.norm+.5, color="blue")+
-  scale_fill_grey()+
-  scale_y_log10()+
-  theme_cowplot()
+<!-- broom.mixed::augment(rm.ar1)%>% -->
+<!--   ggplot(aes(x = .resid, color = line))+ -->
+<!--   geom_density()+ -->
+<!--   facet_grid(seed.bank~phage)+ -->
+<!--   theme_cowplot()+panel_border() -->
 
-```
+<!-- ``` -->
 
-More of the groups now have normally distributed residulas, but not all. 
+<!-- ```{r} -->
+<!-- d.resid <-  -->
+<!--   broom.mixed::augment(rm.ar1)%>% -->
+<!--   select(.resid,phage,seed.bank,line)%>% -->
+<!--   group_by(phage,seed.bank,line)%>% -->
+<!-- summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>% -->
+<!--   mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>% -->
+<!--   arrange(desc(p.shapiro))%>% -->
+<!--   print() -->
+
+<!-- n.norm=sum(d.resid$normal) -->
+
+<!-- broom.mixed::augment(rm.ar1)%>% -->
+<!--   select(.resid,phage,seed.bank,line)%>% -->
+<!--   group_by(phage,seed.bank,line)%>% -->
+<!-- summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value)%>% -->
+<!--   mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>% -->
+<!--   arrange(desc(p.shapiro))%>% -->
+<!--   ungroup()%>% -->
+<!--   mutate(rank=row_number())%>% -->
+<!--   ggplot(aes(rank, p.shapiro))+ -->
+<!--   geom_col(aes(fill=seed.bank, color=phage),size=1)+ -->
+<!--   geom_hline(yintercept = 0.05, color="red")+ -->
+<!--   geom_vline(xintercept = n.norm+.5, color="blue")+ -->
+<!--   scale_fill_grey()+ -->
+<!--   scale_y_log10()+ -->
+<!--   theme_cowplot() -->
+
+<!-- ``` -->
+
+<!-- More of the groups now have normally distributed residulas, but not all.  -->
