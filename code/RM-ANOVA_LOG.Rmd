@@ -1,11 +1,11 @@
 ---
 title: "RM-ANOVA for coevolution with a seed bank"
-output: 
+output:
+  pdf_document: default
   html_notebook:
     code_folding: hide
-editor_options: 
+editor_options:
   chunk_output_type: inline
-  
 ---
 
 ```{r setup, include=FALSE}
@@ -83,7 +83,7 @@ In the first few days of the experiment cell numbers dropped below detection lim
 Points with missing data: 
 ```{r}
 d%>%
-  filter(cell.ml<10)
+  filter(cell.ml<10) 
 ```
  
  These are all veg cells:
@@ -166,6 +166,20 @@ car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat)
 
 The data does not fulfill the assumption of equal variance across test groups.
 
+```{r}
+pd1 <- 
+  d.4stat%>%
+    ggplot(aes(x = cell.ml, color = line))+
+  geom_density()+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+pd2 <- 
+  ggqqplot(d.4stat$cell.ml)
+  
+```
+
+
 ## RM-Anova with  corAR1 covariance structure
 
 I continue the analysis with the untatnsformed data. 
@@ -216,7 +230,7 @@ plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
 
 ```
 
-The QQ-plot (a) sjows large departure of residulas from normality. 
+The QQ-plot (a) shows large departure of residulas from normality. 
  Shapiro test for normality of residuals applied to each of the groups (individual culture).  
 ```{r}
 d.resid <- 
@@ -244,6 +258,147 @@ d.resid%>%
 ```
 
 Groups with p.shapiro>0.05 are considered normally distributed (Above the res lie, left of the blue line). Here we have 8 such groups (of 18).
+
+
+# Box-Cox transformation
+
+```{r}
+# Multivariate transformation to normality within levels of 'htype'
+summary(bc <-  powerTransform(cell.ml ~ phage*seed.bank*line, d.4stat))
+
+```
+
+```{r}
+  with(d.4stat, boxCox(cell.ml ~ phage*seed.bank*line, 
+         lambda = seq(-1, 3, len = 40), family="bcPower"))
+```
+
+
+```{r}  
+# with(d.4stat, plot(bc, col=as.numeric(htype)))
+d.4stat <- 
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+  #make time an integer for correlation structure
+  # by converting to days as time unit
+  mutate(Time=as.integer(2*Time))%>%
+  # for the lme model all fixed effects need to be factors
+  mutate(time.fct=as.factor(Time))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(phage=as.factor(phage))%>%
+  mutate(cell.ml=bcPower(cell.ml, bc$roundlam))
+
+d.4stat %>%
+  ggplot(aes(x=Time, y=cell.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+        facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log10)")
+```
+
+#### test data for homogeneity of variances  
+```{r}
+# Levene's test with multiple independent variables
+car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat)
+```
+Passes this test, barely.
+
+```{r}
+pd1.bc <- 
+  d.4stat%>%
+    ggplot(aes(x = cell.ml, color = line))+
+  geom_density()+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+pd2.bc <- 
+  ggqqplot(d.4stat$cell.ml)
+  
+```
+
+#### RM-Anova with  corAR1 covariance structure
+
+```{r}
+rm.ar1 <- 
+  d.4stat%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * time.fct ,
+    # lme(log10(cell.ml) ~ phage * seed.bank * time.fct ,
+        random = ~1|flask, 
+        correlation = corAR1(form = ~ Time | flask),
+        data = .)
+
+anova.lme(rm.ar1)
+```
+
+
+#### Distribution of model residuals  
+```{r,fig.height=10, fig.width=15}
+p1 <- ggqqplot(residuals(rm.ar1))
+
+p2 <-
+broom.mixed::augment(rm.ar1)%>%
+  ggplot(aes(Time,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_line(aes(color=line))+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+p3 <-
+broom.mixed::augment(rm.ar1)%>%
+  ggplot(aes(seed.bank,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+
+  geom_point(aes(color=line), position = position_dodge(width = .9), shape=21)+
+  facet_wrap(~phage)+
+  theme_cowplot()+panel_border()
+
+p4 <- 
+broom.mixed::augment(rm.ar1)%>%
+  ggplot(aes(x = .resid, color = line))+
+  geom_density()+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
+
+```
+
+
+
+ Shapiro test for normality of residuals applied to each of the groups (individual culture).  
+```{r}
+d.resid <- 
+  broom.mixed::augment(rm.ar1)%>%
+  select(.resid,phage,seed.bank,line)%>%
+  group_by(phage,seed.bank,line)%>%
+summarise(p.shapiro = shapiro.test(unlist(.resid))$p.value,.groups = 'drop')%>%
+  mutate(normal=if_else(p.shapiro>=0.05,TRUE,FALSE))%>%
+  arrange(desc(p.shapiro))%>%
+  print()
+
+n.norm=sum(d.resid$normal)
+
+d.resid%>%
+  arrange(desc(p.shapiro))%>%
+  ungroup()%>%
+  mutate(rank=row_number())%>%
+  ggplot(aes(rank, p.shapiro))+
+  geom_col(aes(fill=seed.bank, color=phage),size=1)+
+  geom_hline(yintercept = 0.05, color="red")+
+  geom_vline(xintercept = n.norm+.5, color="blue")+
+  scale_fill_grey()+
+  scale_y_log10()+
+  theme_cowplot()
+```
+
+More of the groups (11/18) now have normally distributed residulas, but not all.
+
+
 
 # log transformed data
 
@@ -282,6 +437,19 @@ car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat)
 ```
 
 This test indicates an increased departure from the equal variances. 
+
+```{r}
+pd1.log <- 
+  d.4stat%>%
+    ggplot(aes(x = cell.ml, color = line))+
+  geom_density()+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+pd2.log <- 
+  ggqqplot(d.4stat$cell.ml)
+  
+```
 
 #### RM-Anova with  corAR1 covariance structure
 
@@ -401,6 +569,20 @@ car::leveneTest(cell.ml ~ phage*seed.bank*line, data = d.4stat)
 
 This transformation made the data have equal variance!
 
+```{r}
+pd1.sqrt <- 
+  d.4stat%>%
+    ggplot(aes(x = cell.ml, color = line))+
+  geom_density()+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+pd2.sqrt <- 
+  ggqqplot(d.4stat$cell.ml)
+  
+```
+
+
 #### RM-Anova with  corAR1 covariance structure
 
 ```{r}
@@ -477,6 +659,14 @@ d.resid%>%
 ```
 
 More of the groups (13/18) now have normally distributed residulas, but still not all.
+
+
+# raw data
+
+```{r,fig.height=10, fig.width=20}
+plot_grid(pd1,pd1.log,pd1.sqrt,pd1.bc,pd2,pd2.log,pd2.sqrt,pd2.bc,nrow = 2, labels = c("raw","log","sqrt","BxCx","","",""))
+```
+
 
 <!-- ######################################################### -->
 <!-- # removing bi daily fluctuation -->
