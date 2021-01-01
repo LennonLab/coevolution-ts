@@ -1,6 +1,6 @@
 ---
 title: "RM-ANOVA for coevolution with a seed bank"
-subtitle: "Total cells"
+subtitle: "Phage density"
 output:
   pdf_document: default
   html_notebook:
@@ -29,6 +29,7 @@ library(nlme)
 library(car)
 library(ggpubr)
 library(broom)
+library(broom.mixed)
 
 # save the state of the project library to the lockfile (called renv.lock),
 # renv::snapshot()
@@ -53,11 +54,13 @@ d <-
   mutate(Time=as.integer(2*Time))%>%
   # for the lme model all fixed effects need to be factors
   mutate(time.fct=as.factor(Time))%>%
+  mutate(phage=as.factor(phage))%>%
   mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(phage=as.factor(phage))
+  #ajust factor order for seed bank
+  mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))
 ```
 
-Select repose variable to be analyzed  
+Select reponse variable to be analyzed  
 
 ```{r}
 var.response <- "cell/ml" 
@@ -67,6 +70,19 @@ d <- d %>%
 ```
 
 Here we analyze **`r var.response` **.
+
+```{r}
+d%>%
+ggplot(aes(x=Time, y=response))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+        facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab(var.response)
+```
+
 
 ### Test data for homogeneity of variances
 
@@ -88,7 +104,19 @@ The data does not fulfill the assumption of equal variance across test groups.
 ```{r}
 d <- d%>%
   mutate(log.response=log10(response))
+
+
+d%>%
+ggplot(aes(x=Time, y=log.response))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+        facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab(paste(var.response,"(log10)"))
 ```
+
 
 ### Test transformed data for homogeneity of variances
 
@@ -121,6 +149,16 @@ Transform using Box-Cox $\lambda$ (rounded).
 ```{r}
 d <- d%>%
   mutate(bxcx.response=bcPower(cell.ml, bx.cx$roundlam))
+
+d%>%
+ggplot(aes(x=Time, y=bxcx.response))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+        facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab(paste(var.response,"(Box-Cox transformed)"))
 
 ```
 
@@ -243,6 +281,6 @@ all.models%>%
 
 ```
 
-The results are pretty simmilar across the models. However for the **phageXsee.bank** interaction the effect is borderline signifcan and in 2 of the models gets a P>0.05.
+The results are pretty simmilar across the models. However for the **phageXsee.bank** interaction the effect is borderline signifcan and in 2 of the models gets a P>0.05. 
 
 
