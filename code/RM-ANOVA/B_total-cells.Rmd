@@ -1,6 +1,6 @@
 ---
 title: "RM-ANOVA for coevolution with a seed bank"
-subtitle: "Phage density"
+subtitle: "Total cell density"
 output:
   pdf_document: default
   html_notebook:
