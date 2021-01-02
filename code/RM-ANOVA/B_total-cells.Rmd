@@ -259,7 +259,7 @@ pq.aic%>%
 
 
 
-How sensitive would the result be to model selected?
+### How sensitive would the result be to model selected?
 ```{r}
 
 # putl all model results in tibble
@@ -284,3 +284,42 @@ all.models%>%
 The results are pretty simmilar across the models. However for the **phageXsee.bank** interaction the effect is borderline signifcan and in 2 of the models gets a P>0.05. 
 
 
+#### Distribution of model residuals
+
+For the best model.
+
+```{r,fig.height=10, fig.width=15}
+
+
+p1 <- ggqqplot(residuals(l.rm[[pq.aic$arma[1]]]))
+
+p2 <-
+broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
+  ggplot(aes(Time,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_line(aes(color=line))+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+p3 <-
+broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
+  ggplot(aes(seed.bank,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+
+  geom_point(aes(color=line), position = position_dodge(width = .9), shape=21)+
+  facet_wrap(~phage)+
+  theme_cowplot()+panel_border()
+
+p4 <-
+broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
+  ggplot(aes(x = .resid, color = line))+
+  geom_density()+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
+
+```
+
+
+# Summary
