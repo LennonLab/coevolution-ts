@@ -1,0 +1,140 @@
+---
+title: "RM-ANOVA for coevolution with a seed bank"
+subtitle: "A. Organize the data"
+output:
+  pdf_document: default
+  html_notebook:
+    code_folding: hide
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+library(renv)
+# #install to project library the required packages
+# renv::restore()
+# # Initialize lock file when first setting repo
+# renv::init()
+
+library(here)
+# # set root at project file ("coevolution-ts"). 
+# # Done once at initial setup.
+# here::set_here()
+
+library(tidyverse)
+library(cowplot)
+
+# save the state of the project library to the lockfile (called renv.lock),
+# renv::snapshot()
+
+```
+
+## Population density data  
+I have previously consolidated all the data on population density collected for this experiment. This includes:
+
+| Population | What it is | Method of measurement |
+| - | - | - |
+|spore / mL | host spore density | flow-cytometry: low SYBR population |
+|veg / mL | host vegetative cell density | flow-cytometry: high SYBR population |
+| cell /mL | total host cell density (spore+veg) | flow-cytometry
+| phage/ mL | total SPO1 phage density (free phage) | qPCR (SYBR)  with phage specific primers and lysate serial dilution as standard | 
+
+```{r load data, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","coevolution_pop_density.csv") )
+
+#add columns on host strain and phage treatment  as encoded in culture name
+d <- 
+  d%>%
+  # host 
+  mutate(host=case_when(grepl("W", culture) ~ "WT",
+                         grepl("SN", culture) ~ "dSpoIIE",
+                         grepl("dS", culture) ~ "dSpoIIE"))%>%
+  # phage
+  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
+                         grepl("Ct", culture) ~ "no_Phage",
+                         grepl("ANC", line) ~ "no_Phage"))%>%
+  #seed bank
+  mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+  #add flask to be used as grouping variable
+  mutate(flask=paste(culture,line, sep = "-"))%>%
+  #remove setup data (prior to phage infection)
+  filter(Time>=0)
+
+```
+
+```{r}
+# plot raw data
+d%>%
+    pivot_longer(cols=contains(".ml"), names_to="pop",values_to="num.ml")%>%
+    ggplot(aes(x=Time, y=num.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_grid(pop~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e10))
+```
+
+In the first few days of the experiment cell numbers dropped below detection limit in 2 of 3 SNO lines. Missing data cannot be analyzed in RM-ANOVA. I will assign these points the detection limit values.
+
+Points with missing data: 
+```{r}
+d%>%
+  filter(cell.ml<10) 
+```
+ 
+ These are all veg cells:
+
+```{r}
+d%>%
+  filter(veg.ml<10)
+```
+---  
+
+**Flow-cytometry detection limit**
+
+The flow cytometer stop conditions were either $50\mu L$ or 50,000 events, whatever came first.  
+In addition, to account for false asignments by noise I required that a gated population have at least 100 events to be taken into account. So the minimal detected population would have 100 cells in $50\mu L$ of analyzed liquid. At this poimt of the experiment we were analyzing x100 diluted samples.
+
+```{r}
+detection.limit <- 100 * (1000/50) * 100
+```
+
+100 events X $1000/50\mu L$ X100 = `r detection.limit` 
+
+I will use $1X10^5$, half the detection limit dor missing value points
+ 
+
+```{r}
+d <- d%>%
+  mutate(cell.ml=if_else(cell.ml>10, cell.ml,detection.limit/2))%>%
+  mutate(veg.ml=if_else(veg.ml>10, veg.ml,detection.limit/2))
+
+
+# plot total cells of raw data
+d%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+  geom_hline(yintercept = detection.limit, color="red")+
+  geom_label(label="detection limit", x=10, y=log10(detection.limit), color="red")+
+      facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 2e9))
+```
+
+
+
+```{r}
+# Save the data to be used for statistical analyes
+write_csv(d,here("data","organized_pop_density.csv"))
+
+```
+

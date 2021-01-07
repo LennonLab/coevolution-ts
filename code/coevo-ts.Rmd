@@ -518,20 +518,64 @@ cell.rm.obs <-
   d%>%
   # remove setup data
   filter(Time>=0)%>%
-  # looking only at total cells (cell.ml)
-    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
-            correlation = corAR1(form = ~ Time|flask),
-            data = .)
-
-# Look at detailed output
-summary(cell.rm.obs) 
+  
+  #make time an integer for corelation structure
+  # by converting to days as time unit
+  mutate(Time=as.integer(2*Time))%>%
+  
+  # for the lme model all fixed effects need to be factors
+  mutate(time.fct=as.factor(Time))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(phage=as.factor(phage))%>%
+ 
+  lme(cell.ml ~ phage * seed.bank * time.fct ,
+        random = ~1|flask,
+      correlation = corAR1(form = ~Time|flask),
+      data=.)
 
 # Obtain F-test
 anova(cell.rm.obs)
 
+
+plot(cell.rm.obs, type='l')
 # # Use `lsmeans` package for time-corrected marginal means
-# lsmeans(cell.rm, ~seed.bank+phage)  %>% plot()+theme_cowplot()
+# lsmeans(cell.rm.obs, ~seed.bank+phage)  %>% plot()+theme_cowplot()
+
+
 ```
+
+# testing for staionarity
+
+```{r}
+d.DF <- tibble()
+
+for(f in unique(d$flask)){
+  print(f)
+}
+  d%>%
+  # remove setup data
+  filter(Time>=0)%>%
+    filter(flask==f)%>%
+  
+  #make time an integer for corelation structure
+  # by converting to days as time unit
+  mutate(Time=as.integer(2*Time))%>%
+  
+  # for the lme model all fixed effects need to be factors
+  mutate(time.fct=as.factor(Time))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(phage=as.factor(phage))-> tmp.ts
+    # select(Time,cell.ml)%>%ts() 
+df <- tseries::adf.test(tmp.ts$cell.ml)
+broom(glance)
+```
+
+
+#####################
+#
+# *stopped here*
+#
+####################
 
 ### RM-ANOVA covariance model selection
 
