@@ -68,7 +68,9 @@ var.response <- "phage/ml"
 d <- d %>%
   mutate(response=phage.ml )%>%
   # remove no phage data
-  filter(phage=="SPO1")
+  filter(phage=="SPO1")%>%
+  # remove time of infection (T=0) the chnage in that first peios is an oulier to the data
+  filter(Time>0)
 ```
 
 Here we analyze **`r var.response` **.
@@ -98,7 +100,7 @@ Using "Levene’s test" that according to website is the most commonly used test
 car::leveneTest(response ~ phage*seed.bank*line, data = d)
 ```
 
-The data fulfills the assumption of equal variance across test groups, with no need for transformation. I will log transform just for plotting, and do so without time of infection (T=0):
+The data fulfills the assumption of equal variance across test groups, with no need for transformation. I will log transform just for plotting:
 
 **Log transform the data**
 
@@ -108,8 +110,7 @@ d <- d%>%
 
 
 d%>%
-  filter(Time>0)%>%
-ggplot(aes(x=Time, y=log.response))+
+  ggplot(aes(x=Time, y=log.response))+
       geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
         # facet_wrap(~phage)+
       theme_bw()+
@@ -144,7 +145,7 @@ The null hypothesis of no transformation needed ($\lambda =1$) is rejected, and 
 
 Plot the profile log-likelihood for Box-Cox transformations .  
 ```{r}
-  with(d, boxCox(cell.ml ~ seed.bank*line, 
+  with(d, boxCox(response ~ seed.bank*line, 
                  lambda = seq(-1, bx.cx$roundlam+3, by = 0.1),
                  family="bcPower"))
 ```
@@ -152,7 +153,7 @@ Plot the profile log-likelihood for Box-Cox transformations .
 Transform using Box-Cox $\lambda$ (rounded). 
 ```{r}
 d <- d%>%
-  mutate(bxcx.response=bcPower(cell.ml, bx.cx$roundlam))
+  mutate(bxcx.response=bcPower(response, bx.cx$roundlam))
 
 d%>%
 ggplot(aes(x=Time, y=bxcx.response))+
@@ -286,7 +287,7 @@ all.models%>%
 
 ```
 
-The results are very simmilar across the models.
+The results are simmilar across the models at least in all models leading to saame conclusions on significance.
 
 
 #### Distribution of model residuals

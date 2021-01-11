@@ -63,12 +63,10 @@ d <-
 Select reponse variable to be analyzed  
 
 ```{r}
-var.response <- "spore/ml" 
+var.response <- "veg/ml" 
 
 d <- d %>%
-  mutate(response=spore.ml )%>%
-  #remove non-sporulating host sample
-  filter(host=="WT")
+  mutate(response=veg.ml )
 ```
 
 Here we analyze **`r var.response` **.
@@ -244,7 +242,7 @@ t.models%>%
 
 # best model is `r best`
 
-Though it is not significantly better than the the other models.  
+It is significantly better than the next models.  
 
 **Results of selected model**
 
@@ -283,7 +281,7 @@ all.models%>%
 
 ```
 
-The results are pretty simmilar across the models.
+The results are simmilar across the models.
 
 
 #### Distribution of model residuals
