@@ -415,10 +415,10 @@ p2 <- coevo.pairs%>%
 
 
 
-plot_grid(p1,p2, labels = "auto")
+plot_grid(p1,p2, labels = "auto") 
 ```
 
-The absence of seed bank effect on population density is seen in days 4-12 of the experiment. In that period a significant reduction in cell density is seen. However after that time the effect of no-seed-bank is lost, until the last samples were as a trend the population density is becoming lower in absence of seed bank and that hits the significance threshold on the last sample day. 
+The "absence of seed bank" effect on population density is seen in days 4-12 of the experiment. In that period a significant reduction in cell density is seen. However after that time the effect of no-seed-bank is lost, until the last samples were as a trend the population density is becoming lower in absence of seed bank and that hits the significance threshold on the last sample day. 
 
 # Summary
 
