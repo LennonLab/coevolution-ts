@@ -27,9 +27,10 @@ library(cowplot)
 
 library(nlme)
 library(car)
-library(ggpubr)
+# library(ggpubr)
 library(broom)
 library(broom.mixed)
+library(emmeans)
 
 # save the state of the project library to the lockfile (called renv.lock),
 # renv::snapshot()
@@ -60,7 +61,7 @@ d <-
   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))
 ```
 
-Select reponse variable to be analyzed  
+Select response variable to be analyzed  
 
 ```{r}
 var.response <- "cell/ml" 
@@ -96,10 +97,11 @@ Using "Levene’s test" that according to website is the most commonly used test
 car::leveneTest(response ~ phage*seed.bank*line, data = d)
 ```
 
-The data does not fulfill the assumption of equal variance across test groups.
+**The data does not fulfill the assumption of equal variance across test groups.**
 
 
-## Log transform the data
+## Log transform the data  
+
 
 ```{r}
 d <- d%>%
@@ -125,12 +127,14 @@ ggplot(aes(x=Time, y=log.response))+
 car::leveneTest(log.response ~ phage*seed.bank*line, data = d)
 ```
 
-The data does not fulfill the assumption of equal variance across test groups.
+**The data still does not fulfill the assumption of equal variance across test groups.**
 
 
 # Box-Cox transformation
 
-`powerTransform` uses the maximum likelihood-like approach of Box and Cox (1964) to select a transformation of a univariate or multivariate response for normality, linearity and/or constant variance. (help page for `car::powerTransform`)
+>`powerTransform` uses the maximum likelihood-like approach of Box and Cox (1964) to select a transformation of a univariate or multivariate response for normality, linearity and/or constant variance.  
+>(help page for `car::powerTransform`)
+
 
 ```{r}
 # Multivariate transformation to normality within levels of 'htype'
@@ -138,7 +142,9 @@ bx.cx <- powerTransform(response ~ phage*seed.bank*line, d)
 summary(bx.cx)
 ```
 
-Plot the profile log-likelihood for Box-Cox transformations .  
+*Tranformation is required, but not a simple log transformation*
+
+Plot the profile log-likelihood for Box-Cox transformations.  
 ```{r}
   with(d, boxCox(cell.ml ~ phage*seed.bank*line, 
                  lambda = seq(-1, bx.cx$roundlam+3, by = 0.1),
@@ -169,7 +175,7 @@ ggplot(aes(x=Time, y=bxcx.response))+
 car::leveneTest(bxcx.response ~ phage*seed.bank*line, data = d)
 ```
 
-The data now fulfills the assumption of equal variance across test groups.
+**The data now fulfills the assumption of equal variance across test groups.**
 
 # RM-ANOVA model selection
 
@@ -214,6 +220,8 @@ pq.aic <-
   # model name
   mutate(arma=paste0("ARMA_P",p,"Q",q))
 
+# save the best model
+m.best <- l.rm[[pq.aic$arma[1]]]
 best <- paste0("corARMA(",pq.aic$p[1],",",pq.aic$q[1],")")
 
 pq.aic%>%
@@ -242,7 +250,7 @@ t.models%>%
 
 # best model is `r best`
 
-Though it is not significantly better than the next 2 model2.  
+Though it is not significantly better than the next 2 models.  
 
 **Results of selected model**
 
@@ -251,18 +259,25 @@ Though it is not significantly better than the next 2 model2.
 pq.aic%>%
   slice_min(AIC)
 #display best model results
-  anova(l.rm[[pq.aic$arma[1]]])
+  anova(m.best)
+
   
 ```
 
+As expected time is very significant at all levels. This includes also a significant 3-way interaction phage x seed-bank x time is detected.  
+Phage too is strongly significant as a main effect and in interaction with time. Phage X seed-bank is on border of significance.  
+Seed-bank is significant as main effect
 
-
+There is evidence to suggest that the seed bank treatment is influencing population dynamics in a phage dependent manner. Before looking into the potential drivers of this effect we evaluate the model.
 
 
 ### How sensitive would the result be to model selected?
+
+looking at different correlation structures.
+
 ```{r}
 
-# putl all model results in tibble
+# all model results to tibble
 all.models <- 
   map(l.rm, anova.lme) %>%
   map(rownames_to_column)%>%
@@ -281,7 +296,7 @@ all.models%>%
 
 ```
 
-The results are pretty simmilar across the models. However for the **phageXsee.bank** interaction the effect is borderline signifcan and in 2 of the models gets a P>0.05. 
+The results are pretty similar across the models. However for the **phageXseed.bank** interaction the effect is borderline significant with 4/6 of the models having a P<0.05 for that interaction. 
 
 
 #### Distribution of model residuals
@@ -290,19 +305,24 @@ For the best model.
 
 ```{r,fig.height=10, fig.width=15}
 
-
-p1 <- ggqqplot(residuals(l.rm[[pq.aic$arma[1]]]))
+p1 <- 
+  #qqplot by seed bank
+  qqnorm(m.best,~ resid(., type = "p")|seed.bank, abline = c(0, 1))
 
 p2 <-
-broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
+  # standardized residuals versus fitted values by seed.bank
+plot(m.best, resid(., type = "p") ~ fitted(.) | seed.bank, abline = 0)
+
+p3 <-
+broom.mixed::augment(m.best)%>%
   ggplot(aes(Time,.resid)) +
   geom_hline(yintercept = 0)+
   geom_line(aes(color=line))+
   facet_grid(seed.bank~phage)+
   theme_cowplot()+panel_border()
 
-p3 <-
-broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
+p4 <-
+broom.mixed::augment(m.best)%>%
   ggplot(aes(seed.bank,.resid)) +
   geom_hline(yintercept = 0)+
   geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+
@@ -310,16 +330,96 @@ broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
   facet_wrap(~phage)+
   theme_cowplot()+panel_border()
 
-p4 <-
-broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
-  ggplot(aes(x = .resid, color = line))+
-  geom_density()+
-  facet_grid(seed.bank~phage)+
-  theme_cowplot()+panel_border()
+
 
 plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
 
 ```
 
+conclusions:  
+a. model residuals are very close to normal distribution. Sign of good fit.  
+b. The residual are evenly distributed around 0, suggesting equal variance.  
+c. Equal residual variance holds across time.  
+d. Equal residual variance holds across experimental units (flasks).  
+
+*A single clear deviation is the no-seed-bank L2 flask.* 
+
+# post hoc  
+What in the phage X seed-bank interaction is causing a significant effect on population dynamics?  
+We analyze the *estimated marginal means (EMM)*, following examples from: https://cran.r-project.org/web/packages/emmeans/vignettes/interactions.html
+
+### Visualize EMM of interactions
+```{r}
+# plot 
+emmip(m.best, phage~seed.bank)+
+  theme_cowplot()
+```
+
+Plot shows that the no-seed-bank in the presence of phage is likely the treatment interaction standing out. We compare seed banks treatments separately for phage treatments.
+
+```{r}
+emm_sb.ph <- emmeans(m.best, pairwise ~ seed.bank | phage)
+
+emm_sb.ph$contrasts
+
+plot(emm_sb.ph)+
+  theme_cowplot()+
+  panel_border()
+
+
+```
+
+Indeed in the phage infected treatments we see that the populations differ between no-seed-bank lines and each of the with seed-bank treatments. But there is no difference between long and short seed banks. The trend is that the absence of a seed.bank results in lower cell densities.  
+We also saw an interaction with time. We next compare the seed-bank treatments across time, separating the phage treatments, and focusing on the phage treated samples.
+
+```{r}
+
+coevo.emm <- emmeans(m.best, ~ seed.bank * phage * time.fct)
+coevo.pairs <- pairs(coevo.emm, simple="seed.bank")%>%
+  tidy
+
+p1 <- 
+  coevo.pairs%>%
+  # focus on phage infected
+  filter(phage=="SPO1")%>%
+  # make time continuous for plotting.
+  mutate(day=as.numeric(time.fct))%>%
+  # arrange panel order
+  mutate(contrast=fct_relevel(contrast, "long - short", after = 0))%>%
+  #plot
+  ggplot(aes(x=day, y=estimate))+
+    #add 0 line
+  geom_hline(yintercept = 0, color="red")+
+  geom_point()+
+  geom_line()+
+  facet_grid(contrast~.)+
+  theme_cowplot()+
+  panel_border()
+
+p2 <- coevo.pairs%>%
+  # focus on phage infected
+  filter(phage=="SPO1")%>%
+  # make time continuous for plotting.
+  mutate(day=as.numeric(time.fct))%>%
+  # arrange panel order
+  mutate(contrast=fct_relevel(contrast, "long - short", after = 0))%>%
+  #plot
+  ggplot(aes(x=day, y=adj.p.value))+
+    #add 0.05 signifcance thrshold
+  geom_hline(yintercept = 0.05, color="red")+
+  geom_point()+
+  geom_line()+
+  facet_grid(contrast~.)+
+  theme_cowplot()+
+  panel_border()
+
+
+
+plot_grid(p1,p2, labels = "auto")
+```
+
+The absence of seed bank effect on population density is seen in days 4-12 of the experiment. In that period a significant reduction in cell density is seen. However after that time the effect of no-seed-bank is lost, until the last samples were as a trend the population density is becoming lower in absence of seed bank and that hits the significance threshold on the last sample day. 
 
 # Summary
+
+The seed bank treatment alters population dynamics (cell density over time) in phage infected cultures only. Populations coevolving with phages in the absence of seed bank show a significant reduction in cell densities, most notably in the short to medium time frame. This is to say that the presence of a seed bank acts as a buffer that moderates the reduction in host population density caused by phage infection. The results suggest however that other mechanisms (presumably host evolution) can eventually enable the host to achieve the same resilience against phage-induced decimation of its population , but these may be less stable in the long run. 

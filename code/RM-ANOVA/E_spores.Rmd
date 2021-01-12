@@ -63,10 +63,12 @@ d <-
 Select reponse variable to be analyzed  
 
 ```{r}
-var.response <- "veg/ml" 
+var.response <- "spore/ml" 
 
 d <- d %>%
-  mutate(response=veg.ml )
+  mutate(response=spore.ml )%>%
+  #remove non-sporulating host sample
+  filter(host=="WT")
 ```
 
 Here we analyze **`r var.response` **.
@@ -140,7 +142,7 @@ summary(bx.cx)
 
 Plot the profile log-likelihood for Box-Cox transformations .  
 ```{r}
-  with(d, boxCox(cell.ml ~ phage*seed.bank*line, 
+  with(d, boxCox(response ~ phage*seed.bank*line, 
                  lambda = seq(-1, bx.cx$roundlam+3, by = 0.1),
                  family="bcPower"))
 ```
@@ -148,7 +150,7 @@ Plot the profile log-likelihood for Box-Cox transformations .
 Transform using Box-Cox $\lambda$ (rounded). 
 ```{r}
 d <- d%>%
-  mutate(bxcx.response=bcPower(cell.ml, bx.cx$roundlam))
+  mutate(bxcx.response=bcPower(response, bx.cx$roundlam))
 
 d%>%
 ggplot(aes(x=Time, y=bxcx.response))+
@@ -242,7 +244,7 @@ t.models%>%
 
 # best model is `r best`
 
-Though it is not significantly better than the next 2 model2.  
+Though it is not significantly better than the the other models.  
 
 **Results of selected model**
 
@@ -281,7 +283,7 @@ all.models%>%
 
 ```
 
-The results are pretty simmilar across the models. However for the **phageXsee.bank** interaction the effect is borderline signifcan and in 2 of the models gets a P>0.05. 
+The results are pretty simmilar across the models.
 
 
 #### Distribution of model residuals

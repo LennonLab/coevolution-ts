@@ -1,0 +1,330 @@
+---
+title: "RM-ANOVA for coevolution with a seed bank"
+subtitle: "Total cell density"
+output:
+  pdf_document: default
+  html_notebook:
+    code_folding: hide
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+library(renv)
+# #install to project library the required packages
+# renv::restore()
+# # Initialize lock file when first setting repo
+# renv::init()
+
+library(here)
+# # set root at project file ("coevolution-ts"). 
+# # Done once at initial setup.
+# here::set_here()
+
+library(tidyverse)
+library(cowplot)
+
+
+library(nlme)
+library(car)
+library(ggpubr)
+library(broom)
+library(broom.mixed)
+
+# save the state of the project library to the lockfile (called renv.lock),
+# renv::snapshot()
+
+```
+
+Load organized data  
+```{r, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","organized_pop_density.csv"), )
+
+```
+
+### Adjusting variable types for lme
+
+In the lme models used below the fixed effects need to be specified as factors. In this experiment these are: *Phage, seed.bank and time*. However for the auto correlation specification time needs to be specified as an integer. To fulfill both requirements we use  the experimental day rather than transfer as the time unit, since samples taken once a day but twice per transfer. This will be simply *time x 2*. From that we make a separate variable which will be the factor of the time.
+
+```{r}
+d <- 
+  d%>%
+  #make time an integer for correlation structure
+  # by converting to days as time unit
+  mutate(Time=as.integer(2*Time))%>%
+  # for the lme model all fixed effects need to be factors
+  mutate(time.fct=as.factor(Time))%>%
+  mutate(phage=as.factor(phage))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  #ajust factor order for seed bank
+  mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))
+```
+
+Select reponse variable to be analyzed  
+
+```{r}
+var.response <- "%spore/ml" 
+
+d <- d %>%
+  #remove non-sporulating host sample
+  filter(host=="WT")%>%
+  mutate(response=100*spore.ml/cell.ml )
+```
+
+Here we analyze **`r var.response` **.
+
+```{r}
+d%>%
+ggplot(aes(x=Time, y=response))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+        facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab(var.response)
+```
+
+
+### Test data for homogeneity of variances
+
+This is an assumption of ANOVA tests.
+
+Based on : https://www.datanovia.com/en/lessons/homogeneity-of-variance-test-in-r/
+Using "Levene’s test" that according to website is the most commonly used test for this purpose. This test has a null hypothesis of equal variance. So getting P>0.05 suggests homogenic variance.  
+
+```{r}
+# Levene's test with multiple independent variables
+car::leveneTest(response ~ phage*seed.bank*line, data = d)
+```
+
+The data does not fulfill the assumption of equal variance across test groups.
+
+
+## Log transform the data
+
+```{r}
+d <- d%>%
+  mutate(log.response=log10(response))
+
+
+d%>%
+ggplot(aes(x=Time, y=log.response))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+        facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab(paste(var.response,"(log10)"))
+```
+
+
+### Test transformed data for homogeneity of variances
+
+```{r}
+# Levene's test with multiple independent variables
+car::leveneTest(log.response ~ phage*seed.bank*line, data = d)
+```
+
+The data does fulfills the assumption of equal variance across test groups, at a borderline p-value.
+
+
+# Box-Cox transformation
+
+`powerTransform` uses the maximum likelihood-like approach of Box and Cox (1964) to select a transformation of a univariate or multivariate response for normality, linearity and/or constant variance. (help page for `car::powerTransform`)
+
+```{r}
+# Multivariate transformation to normality within levels of 'htype'
+bx.cx <- powerTransform(response ~ phage*seed.bank*line, d)
+summary(bx.cx)
+```
+
+Plot the profile log-likelihood for Box-Cox transformations .  
+```{r}
+  with(d, boxCox(response ~ phage*seed.bank*line, 
+                 lambda = seq(-1, bx.cx$roundlam+3, by = 0.1),
+                 family="bcPower"))
+```
+
+Transform using Box-Cox $\lambda$ (rounded). 
+```{r}
+d <- d%>%
+  mutate(bxcx.response=bcPower(response, bx.cx$roundlam))
+
+d%>%
+ggplot(aes(x=Time, y=bxcx.response))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+        facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab(paste(var.response,"(Box-Cox transformed)"))
+
+```
+
+### Test transformed data for homogeneity of variances
+
+```{r}
+# Levene's test with multiple independent variables
+car::leveneTest(bxcx.response ~ phage*seed.bank*line, data = d)
+```
+
+The data now fulfills the assumption of equal variance across test groups.
+
+# RM-ANOVA model selection
+
+To account for time series auto-correlation we will specify correlation structure to the lme model. We will test various corARMA correlation structures and choose by lowest AIC. This is a combined  auto-regressive model, AR(p), and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC). Since we have a seasonality of lag 2 due to transfer we will look at lag up to 2 for both AR and MA. Note that a corARMA(p=1, q=0) is the same as corAR1.  
+
+```{r arma, message = FALSE, warning = FALSE}
+# initalise empty list to save models
+l.rm <- list()
+
+# initalise empty table to collect model data
+pq.aic <- tibble()
+
+
+  
+for(Q in c(0:2)){ 
+  for (P in c(0:2)){ 
+    
+    #skip corARMA(0,0)
+    if (P==0 & Q==0) next
+    
+    # corARMA(1,2) had singular convergence
+    if (P==1 & Q==2) next
+    
+    #run model
+    cur.model <- d%>%
+      lme(bxcx.response ~ phage * seed.bank * time.fct , 
+          random = ~1|flask, 
+          correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
+            data = .)
+    l.rm[[paste0("ARMA_P",P,"Q",Q)]] <- cur.model
+    
+    cur.tbl <- broom.mixed::glance(cur.model)%>%
+      mutate(p=P)%>%
+      mutate(q=Q)
+
+      
+      pq.aic <- bind_rows(pq.aic,cur.tbl)
+    
+  }
+}
+
+# get list order by AIC
+pq.aic <- 
+  pq.aic%>%arrange(AIC)%>%
+  # model name
+  mutate(arma=paste0("ARMA_P",p,"Q",q))
+
+best <- paste0("corARMA(",pq.aic$p[1],",",pq.aic$q[1],")")
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,AIC))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)",paste("best model uses", best))
+
+# compare best 5 models by AIC order
+t.models <- anova(l.rm[[pq.aic$arma[5]]],
+                  l.rm[[pq.aic$arma[4]]],
+                  l.rm[[pq.aic$arma[3]]],
+                  l.rm[[pq.aic$arma[2]]],
+                  l.rm[[pq.aic$arma[1]]])
+
+t.models%>%
+  tibble()%>%
+  select(-call)%>%
+  mutate(arma=pq.aic$arma[1:5])
+
+```
+
+
+# best model is `r best`
+
+This model is significantly better than the other models.  
+
+**Results of selected model**
+
+```{r}
+# best model data
+pq.aic%>%
+  slice_min(AIC)
+#display best model results
+  anova(l.rm[[pq.aic$arma[1]]])
+  
+```
+
+
+
+
+
+### How sensitive would the result be to model selected?  
+```{r}
+
+# putl all model results in tibble
+all.models <- 
+  map(l.rm, anova.lme) %>%
+  map(rownames_to_column)%>%
+  bind_rows(.id = "arma")%>%
+  rename(effect=rowname)
+
+
+all.models%>%
+  mutate(effect=fct_inorder(effect))%>%
+  ggplot(aes(x=effect, y=`p-value`))+
+  geom_hline(yintercept = c(0.05,0.01,1e-3), color="pink")+
+  geom_jitter(aes(fill=effect),width = 0.2, height = 0,
+              shape=21, size=2, show.legend = F)+
+  coord_flip()+
+  theme_cowplot()
+
+```
+
+The results lead to simmilar conclusions across the models, with the exeption of phage X seed-bank interaction which hovers around the .05 significance threshold.
+
+
+#### Distribution of model residuals
+
+For the best model.
+
+```{r,fig.height=10, fig.width=15}
+
+
+p1 <- ggqqplot(residuals(l.rm[[pq.aic$arma[1]]]))
+
+p2 <-
+broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
+  ggplot(aes(Time,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_line(aes(color=line))+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+p3 <-
+broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
+  ggplot(aes(seed.bank,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+
+  geom_point(aes(color=line), position = position_dodge(width = .9), shape=21)+
+  facet_wrap(~phage)+
+  theme_cowplot()+panel_border()
+
+p4 <-
+broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
+  ggplot(aes(x = .resid, color = line))+
+  geom_density()+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()+panel_border()
+
+plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
+
+```
+
+
+# Summary
