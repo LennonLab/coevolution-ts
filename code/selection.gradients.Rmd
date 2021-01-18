@@ -1,0 +1,89 @@
+---
+title: "Bacillus selection gradients"
+author: "Jay T. Lennon"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+header-includes:
+   - \usepackage{array}
+   - \usepackage{graphics}
+output:
+  pdf_document:
+  fig_caption: true
+---
+
+# Initial setup
+
+```{r results='hide', message=FALSE}
+rm(list=ls())
+setwd("~/GitHub/coevolution-ts/")
+require("dplyr")
+```
+
+# Load data and standardize trait data (percent sporulation)
+
+```{r}
+data <- read.csv("./data/sporulation-growth.csv", header = TRUE, sep =",")
+perc.spore.std <- scale(data$perc.spore)
+data <-data.frame(data, perc.spore.std)
+```
+
+# Select strains
+
+```{r}
+# Wild type host without seed bank and no phage
+wt.np.anc <- filter(data, host == "WT" & phage == "no_Phage" & line == "ANC") %>%
+   dplyr::select(colony, perc.spore.std, growth.rate) %>%
+   group_by(colony) %>%
+   summarize(perc.spore.std = mean(perc.spore.std), growth.rate = mean(growth.rate)) 
+
+# Wild type host without seed bank and SP01
+wt.np.short <- filter(data, host == "WT" & phage == "no_Phage" & seed.bank == "short") %>%
+   dplyr::select(colony, perc.spore.std, growth.rate) %>%
+   group_by(colony) %>%
+   summarize(perc.spore.std = mean(perc.spore.std), growth.rate = mean(growth.rate)) 
+```
+
+# Plot selection gradient
+
+```{r}
+png(filename="~/GitHub/coevolution-ts/plots/select.grad.wt.png",
+    width = 1200, height = 1200, res = 96*2)
+
+plot.new()
+par(mar = c(7, 7, 5, 7))
+
+plot(wt.np.anc$perc.spore.std, wt.np.anc$growth.rate, xlim = c(-0.1, 1.1), 
+     ylim = c(0.019, 0.051), type = "p", 
+     pch = 21, bg = "pink", col = "black", cex = 1.5, ylab = "", xlab = "", 
+     cex.lab = 1.5, las = 1, lwd = 1, yaxt = "n", xaxt = "n")
+box(lwd=2)
+
+# Add ticks and tick labels
+axis(side = 2, lwd.ticks = 2, las = 1, cex.axis = 1.25, 
+   labels = c("0.02", "0.03", "0.04", "0.05"), at = c(0.02, 0.03, 0.04, 0.05))
+
+axis(side = 4, labels = F, lwd.ticks = 2, 
+   at = c(0.02, 0.03, 0.04, 0.05))
+
+axis(side = 1, lwd.ticks = 2, cex.axis = 1.25, las = 1,
+    labels = c("0.0", "0.25", "0.50", "0.75", "1.0"), at = c(0, 0.25, 0.5, 0.75, 1))
+
+axis(side = 3, labels = F, lwd.ticks = 2, las = 1, cex.axis = 1.25, 
+   at = c(0, 0.25, 0.5, 0.75, 1))
+
+mtext('Standardized percent sporulation', side = 1, outer = TRUE, cex = 1.5, 
+      line = -4, adj = 0.5)
+
+mtext('Growth rate', side = 2, outer = TRUE, cex = 1.5, line = -3.5, adj = 0.6)
+
+fit1 <- lm(wt.np.anc$growth.rate ~ wt.np.anc$perc.spore.std)
+abline(fit1, col = "red", lty = 2, lwd = 2)
+
+points(wt.np.short$perc.spore.std, wt.np.short$growth.rate, type = "p", 
+     pch = 21, bg = "lightblue", lwd = 1, col = "black", cex = 1.5)
+
+fit2 <- lm(wt.np.short$growth.rate ~ wt.np.short$perc.spore.std)
+abline(fit2, col = "blue", lty = 2, lwd = 2)
+```
+
+
+
