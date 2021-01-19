@@ -27,7 +27,7 @@ library(cowplot)
 
 library(nlme)
 library(car)
-library(ggpubr)
+library(emmeans)
 library(broom)
 library(broom.mixed)
 
@@ -60,7 +60,7 @@ d <-
   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))
 ```
 
-Select reponse variable to be analyzed  
+Select response variable to be analyzed  
 
 ```{r}
 var.response <- "spore/ml" 
@@ -140,6 +140,9 @@ bx.cx <- powerTransform(response ~ phage*seed.bank*line, d)
 summary(bx.cx)
 ```
 
+The null hypothesis of no transformation needed ($\lambda =1$) is rejected, as is the hypothesis of a log transformation (($\lambda =1$), and so we  transform the data using $\lambda$ suggested by Box-Cox.
+
+
 Plot the profile log-likelihood for Box-Cox transformations .  
 ```{r}
   with(d, boxCox(response ~ phage*seed.bank*line, 
@@ -216,6 +219,8 @@ pq.aic <-
   # model name
   mutate(arma=paste0("ARMA_P",p,"Q",q))
 
+# save the best model
+m.best <- l.rm[[pq.aic$arma[1]]]
 best <- paste0("corARMA(",pq.aic$p[1],",",pq.aic$q[1],")")
 
 pq.aic%>%
@@ -257,24 +262,27 @@ pq.aic%>%
   
 ```
 
-
-
-
+Seed-bank treatment has no significant effect on spore population densities, neither as main effect or in interaction with other predictors. phage and time both significantly effect spore densities. Before looking into the potential drivers of this effect we evaluate the model. 
 
 ### How sensitive would the result be to model selected?  
 ```{r}
-
-# putl all model results in tibble
+# put all model results in tibble
 all.models <- 
   map(l.rm, anova.lme) %>%
   map(rownames_to_column)%>%
   bind_rows(.id = "arma")%>%
   rename(effect=rowname)
 
+arma.best <- paste0("ARMA_P",pq.aic$p[1],"Q",pq.aic$q[1])
+selected <- 
+  all.models%>%
+  filter(arma==arma.best)
+
 
 all.models%>%
   mutate(effect=fct_inorder(effect))%>%
   ggplot(aes(x=effect, y=`p-value`))+
+   geom_point(data = selected, color="black", size=10, shape="|")+
   geom_hline(yintercept = c(0.05,0.01,1e-3), color="pink")+
   geom_jitter(aes(fill=effect),width = 0.2, height = 0,
               shape=21, size=2, show.legend = F)+
@@ -283,7 +291,7 @@ all.models%>%
 
 ```
 
-The results are pretty simmilar across the models.
+The line marks the p-values of the selected model, and the points shoe p-values of all models tested (including best). The results are pretty similar across the models.
 
 
 #### Distribution of model residuals
@@ -291,20 +299,24 @@ The results are pretty simmilar across the models.
 For the best model.
 
 ```{r,fig.height=10, fig.width=15}
-
-
-p1 <- ggqqplot(residuals(l.rm[[pq.aic$arma[1]]]))
+p1 <- 
+  #qqplot by seed bank
+  qqnorm(m.best,~ resid(., type = "p")|seed.bank, abline = c(0, 1))
 
 p2 <-
-broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
+  # standardized residuals versus fitted values by seed.bank
+plot(m.best, resid(., type = "p") ~ fitted(.) | seed.bank, abline = 0)
+
+p3 <-
+broom.mixed::augment(m.best)%>%
   ggplot(aes(Time,.resid)) +
   geom_hline(yintercept = 0)+
   geom_line(aes(color=line))+
   facet_grid(seed.bank~phage)+
   theme_cowplot()+panel_border()
 
-p3 <-
-broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
+p4 <-
+broom.mixed::augment(m.best)%>%
   ggplot(aes(seed.bank,.resid)) +
   geom_hline(yintercept = 0)+
   geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+
@@ -312,16 +324,79 @@ broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
   facet_wrap(~phage)+
   theme_cowplot()+panel_border()
 
-p4 <-
-broom.mixed::augment(l.rm[[pq.aic$arma[1]]])%>%
-  ggplot(aes(x = .resid, color = line))+
-  geom_density()+
-  facet_grid(seed.bank~phage)+
-  theme_cowplot()+panel_border()
+
 
 plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
-
 ```
 
+conclusions:  
+a. model residuals are very close to normal distribution. Sign of good fit.  
+b. The residuals are evenly distributed around 0, suggesting equal variance.  
+c. Equal residual variance holds across time.  
+d. Equal residual variance holds across experimental units (flasks).  
+
+# post hoc  
+What in the seed-bank X time interaction is causing a significant effect on phage population dynamics?  
+We analyze the *estimated marginal means (EMM)*, following examples from: https://cran.r-project.org/web/packages/emmeans/vignettes/interactions.html
+
+### Visualize EMM of interactions
+```{r}
+# plot 
+emmip(m.best, phage~time.fct)+
+  theme_cowplot()
+```
+
+Spores are consistently lower in presence of phage. a rise in spore density is seen in the second half of the experiment in the absence of phage. This complements the observation of decline on vegetative cells in non-infected WT culture in the same period.
+
+What is the source of the phageXtime interaction being significant? Breaking up the model estimated by these two predictors next.
+
+```{r}
+
+coevo.emm <- emmeans(m.best, ~  phage * time.fct)
+coevo.pairs <- pairs(coevo.emm, simple="phage")%>%
+  tidy
+
+p1 <- 
+  coevo.pairs%>%
+  # make time continuous for plotting.
+  mutate(day=as.numeric(time.fct))%>%
+  #plot
+  ggplot(aes(x=day, y=estimate))+
+    #add 0 line
+  geom_hline(yintercept = 0, color="red")+
+  geom_point()+
+  geom_line()+
+  facet_grid(contrast~.)+
+  theme_cowplot()+
+  panel_border()
+
+p2 <- coevo.pairs%>%
+  # focus on phage infected
+  # filter(phage=="SPO1")%>%
+  # # make time continuous for plotting.
+  mutate(day=as.numeric(time.fct))%>%
+  # arrange panel order
+  mutate(contrast=fct_relevel(contrast, "long - short", after = 0))%>%
+  #plot
+  ggplot(aes(x=day, y=p.value))+
+    #add 0.05 signifcance thrshold
+  geom_hline(yintercept = 0.05, color="red")+
+  geom_point()+
+  geom_line()+
+  facet_grid(contrast~.)+
+  theme_cowplot()+
+  panel_border()
+
+
+
+plot_grid(p1,p2, labels = "auto") 
+```
+
+The phage effect on spore density is consistent across time except for a brief period in the first few samples.
+
+
+The major differences seem to be in phage-treated cultures, between first two transfers and the rest of the data.  
 
 # Summary
+
+Spore densities were significantly lower in phage infected cultures, in agreement with the previous observations of lower vegetative cells and overall cell density. We find no difference in spore densities between the two seed-bank treatments in both long and short seed bank treatments. In the non-infected lines we find a trend on increase in spore densities, mostly in second half of the experiment.
