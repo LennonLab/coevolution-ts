@@ -22,8 +22,29 @@ require("dplyr")
 
 ```{r}
 data <- read.csv("./data/sporulation-growth.csv", header = TRUE, sep =",")
-perc.spore.std <- scale(data$perc.spore)
-data <-data.frame(data, perc.spore.std)
+perc.spore.std <- (data$perc.spore - mean(data$perc.spore)) / sd(data$perc.spore)
+data <- data.frame(data, perc.spore.std)
+```
+
+# Calculate relative fitness
+
+```{r}
+# average fitness for ancestral strain
+anc <- filter(data, host == "WT" & phage == "no_Phage" & line == "ANC") %>%
+   dplyr::select(colony, growth.rate) %>%
+   group_by(colony) %>%
+   summarize(an.growth.rate = mean(growth.rate)) 
+anc.gr <- mean(anc$an.growth.rate)
+rel.fit <- data$growth.rate / anc.gr
+data <- data.frame(data, rel.fit)
+```
+
+# Visualize trait variation
+
+```{r}
+spore.hist <- hist(data$perc.spore.std, main = NA, 
+      xlab = "standardized % sporulation", ylab = "Frequency",
+      breaks = 25)
 ```
 
 # Select strains
@@ -31,38 +52,46 @@ data <-data.frame(data, perc.spore.std)
 ```{r}
 # Wild type host without seed bank and no phage
 wt.np.anc <- filter(data, host == "WT" & phage == "no_Phage" & line == "ANC") %>%
-   dplyr::select(colony, perc.spore.std, growth.rate) %>%
+   dplyr::select(colony, perc.spore.std, rel.fit) %>%
    group_by(colony) %>%
-   summarize(perc.spore.std = mean(perc.spore.std), growth.rate = mean(growth.rate)) 
+   summarize(perc.spore.std = mean(perc.spore.std), rel.fit = mean(rel.fit)) 
 
-# Wild type host without seed bank and SP01
+# Wild type host with short seed bank and no phage
 wt.np.short <- filter(data, host == "WT" & phage == "no_Phage" & seed.bank == "short") %>%
-   dplyr::select(colony, perc.spore.std, growth.rate) %>%
+   dplyr::select(colony, perc.spore.std, rel.fit) %>%
    group_by(colony) %>%
-   summarize(perc.spore.std = mean(perc.spore.std), growth.rate = mean(growth.rate)) 
+   summarize(perc.spore.std = mean(perc.spore.std), rel.fit = mean(rel.fit)) 
+
+# Wild type host with short seed bank and plus phage
+wt.pp.short <- filter(data, host == "WT" & phage == "SPO1" & seed.bank == "short") %>%
+   dplyr::select(colony, perc.spore.std, rel.fit) %>%
+   group_by(colony) %>%
+   summarize(perc.spore.std = mean(perc.spore.std), rel.fit = mean(rel.fit)) 
 ```
 
 # Plot selection gradient
 
 ```{r}
-png(filename="~/GitHub/coevolution-ts/plots/select.grad.wt.png",
+# Wild type ancestor vs. evolved host with a short seed bank
+
+png(filename="~/GitHub/coevolution-ts/plots/select.grad-1.png",
     width = 1200, height = 1200, res = 96*2)
 
 plot.new()
 par(mar = c(7, 7, 5, 7))
 
-plot(wt.np.anc$perc.spore.std, wt.np.anc$growth.rate, xlim = c(-0.1, 1.1), 
-     ylim = c(0.019, 0.051), type = "p", 
+plot(wt.np.anc$perc.spore.std, wt.np.anc$rel.fit, xlim = c(-0.1, 1.1), 
+     ylim = c(0.75, 1.4), type = "p", 
      pch = 21, bg = "pink", col = "black", cex = 1.5, ylab = "", xlab = "", 
      cex.lab = 1.5, las = 1, lwd = 1, yaxt = "n", xaxt = "n")
 box(lwd=2)
 
 # Add ticks and tick labels
 axis(side = 2, lwd.ticks = 2, las = 1, cex.axis = 1.25, 
-   labels = c("0.02", "0.03", "0.04", "0.05"), at = c(0.02, 0.03, 0.04, 0.05))
+   labels = c("0.75", "1.00", "1.25"), at = c(0.75, 1.0, 1.25))
 
 axis(side = 4, labels = F, lwd.ticks = 2, 
-   at = c(0.02, 0.03, 0.04, 0.05))
+   at = c(0.75, 1.0, 1.25))
 
 axis(side = 1, lwd.ticks = 2, cex.axis = 1.25, las = 1,
     labels = c("0.0", "0.25", "0.50", "0.75", "1.0"), at = c(0, 0.25, 0.5, 0.75, 1))
@@ -70,20 +99,70 @@ axis(side = 1, lwd.ticks = 2, cex.axis = 1.25, las = 1,
 axis(side = 3, labels = F, lwd.ticks = 2, las = 1, cex.axis = 1.25, 
    at = c(0, 0.25, 0.5, 0.75, 1))
 
-mtext('Standardized percent sporulation', side = 1, outer = TRUE, cex = 1.5, 
+mtext('Sporulation (standardized)', side = 1, outer = TRUE, cex = 1.5, 
       line = -4, adj = 0.5)
 
-mtext('Growth rate', side = 2, outer = TRUE, cex = 1.5, line = -3.5, adj = 0.6)
+mtext(expression('Relative fitness ('~italic(w)~')'), side = 2, outer = TRUE, 
+      cex = 1.5, line = -3.5, adj = 0.6)
 
-fit1 <- lm(wt.np.anc$growth.rate ~ wt.np.anc$perc.spore.std)
+fit1 <- lm(wt.np.anc$rel.fit ~ wt.np.anc$perc.spore.std)
 abline(fit1, col = "red", lty = 2, lwd = 2)
 
-points(wt.np.short$perc.spore.std, wt.np.short$growth.rate, type = "p", 
+points(wt.np.short$perc.spore.std, wt.np.short$rel.fit, type = "p", 
      pch = 21, bg = "lightblue", lwd = 1, col = "black", cex = 1.5)
 
-fit2 <- lm(wt.np.short$growth.rate ~ wt.np.short$perc.spore.std)
+fit2 <- lm(wt.np.short$rel.fit ~ wt.np.short$perc.spore.std)
 abline(fit2, col = "blue", lty = 2, lwd = 2)
+
+dev.off()  
+graphics.off() 
 ```
 
+```{r}
+# Short seed bank without phage vs. short seed bank with phage
+
+png(filename="~/GitHub/coevolution-ts/plots/select.grad-2.png",
+    width = 1200, height = 1200, res = 96*2)
+
+plot.new()
+par(mar = c(7, 7, 5, 7))
+
+plot(wt.np.short$perc.spore.std, wt.np.short$rel.fit, xlim = c(-1.5, 1.5), 
+     ylim = c(0.65, 1.4), type = "p", 
+     pch = 21, bg = "pink", col = "black", cex = 1.5, ylab = "", xlab = "", 
+     cex.lab = 1.5, las = 1, lwd = 1, yaxt = "n", xaxt = "n")
+box(lwd=2)
+
+# Add ticks and tick labels
+axis(side = 2, lwd.ticks = 2, las = 1, cex.axis = 1.25, 
+   labels = c("0.75", "1.00", "1.25"), at = c(0.75, 1.0, 1.25))
+
+axis(side = 4, labels = F, lwd.ticks = 2, 
+   at = c(0.75, 1.0, 1.25))
+
+axis(side = 1, lwd.ticks = 2, cex.axis = 1.2, las = 1,
+    labels = c("-1.0", "-0.5", "0.0", "0.5", "1.0"), at = c(-1, -0.5, 0, 0.5, 1))
+
+axis(side = 3, labels = F, lwd.ticks = 2, las = 1, cex.axis = 1.2, 
+   at = c(-1.0, -0.5, 0, 0.5, 1.0))
+
+mtext('Sporulation (standardized)', side = 1, outer = TRUE, cex = 1.5, 
+      line = -4, adj = 0.5)
+
+mtext(expression('Relative fitness ('~italic(w)~')'), side = 2, outer = TRUE, 
+      cex = 1.5, line = -3.5, adj = 0.6)
+
+fit1 <- lm(wt.np.short$rel.fit ~ wt.np.short$perc.spore.std)
+abline(fit1, col = "red", lty = 2, lwd = 2)
+
+points(wt.pp.short$perc.spore.std, wt.pp.short$rel.fit, type = "p", 
+     pch = 21, bg = "lightblue", lwd = 1, col = "black", cex = 1.5)
+
+fit2 <- lm(wt.pp.short$rel.fit ~ wt.pp.short$perc.spore.std)
+abline(fit2, col = "blue", lty = 2, lwd = 2)
+
+dev.off()  
+graphics.off() 
+```
 
 
