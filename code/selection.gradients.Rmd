@@ -14,14 +14,20 @@ output:
 
 ```{r results='hide', message=FALSE}
 rm(list=ls())
-setwd("~/GitHub/coevolution-ts/")
+# setwd("~/GitHub/coevolution-ts/")
 require("dplyr")
+require(here)
 ```
 
 # Load data and standardize trait data (percent sporulation)
 
 ```{r}
-data <- read.csv("./data/sporulation-growth.csv", header = TRUE, sep =",")
+data <- read.csv(here("data/sporulation-growth.csv"), header = TRUE, sep =",")
+# data <- read.csv("./data/sporulation-growth.csv", header = TRUE, sep =",")
+
+#select sporulation data time (24 or 48 hrs)
+data <- filter(data, Tsample=="T48H")
+
 perc.spore.std <- (data$perc.spore - mean(data$perc.spore)) / sd(data$perc.spore)
 data <- data.frame(data, perc.spore.std)
 ```
@@ -52,20 +58,20 @@ spore.hist <- hist(data$perc.spore.std, main = NA,
 ```{r}
 # Wild type host without seed bank and no phage
 wt.np.anc <- filter(data, host == "WT" & phage == "no_Phage" & line == "ANC") %>%
-   dplyr::select(colony, perc.spore.std, rel.fit) %>%
+   dplyr::select(colony, line, perc.spore.std, rel.fit) %>%
    group_by(colony) %>%
    summarize(perc.spore.std = mean(perc.spore.std), rel.fit = mean(rel.fit)) 
 
 # Wild type host with short seed bank and no phage
 wt.np.short <- filter(data, host == "WT" & phage == "no_Phage" & seed.bank == "short") %>%
-   dplyr::select(colony, perc.spore.std, rel.fit) %>%
-   group_by(colony) %>%
+   dplyr::select(colony, line, perc.spore.std, rel.fit) %>%
+   group_by(colony, line) %>%
    summarize(perc.spore.std = mean(perc.spore.std), rel.fit = mean(rel.fit)) 
 
 # Wild type host with short seed bank and plus phage
 wt.pp.short <- filter(data, host == "WT" & phage == "SPO1" & seed.bank == "short") %>%
-   dplyr::select(colony, perc.spore.std, rel.fit) %>%
-   group_by(colony) %>%
+   dplyr::select(colony, line, perc.spore.std, rel.fit) %>%
+   group_by(colony, line) %>%
    summarize(perc.spore.std = mean(perc.spore.std), rel.fit = mean(rel.fit)) 
 ```
 
@@ -74,7 +80,7 @@ wt.pp.short <- filter(data, host == "WT" & phage == "SPO1" & seed.bank == "short
 ```{r}
 # Wild type ancestor vs. evolved host with a short seed bank
 
-png(filename="~/GitHub/coevolution-ts/plots/select.grad-1.png",
+png(filename=here("/plots/selection-gradient/select.grad-1-48h.png"),
     width = 1200, height = 1200, res = 96*2)
 
 plot.new()
@@ -121,7 +127,7 @@ graphics.off()
 ```{r}
 # Short seed bank without phage vs. short seed bank with phage
 
-png(filename="~/GitHub/coevolution-ts/plots/select.grad-2.png",
+png(filename=here("/plots/selection-gradient/select.grad-2-48h.png"),
     width = 1200, height = 1200, res = 96*2)
 
 plot.new()
@@ -165,4 +171,61 @@ dev.off()
 graphics.off() 
 ```
 
+-------------
+Compare all treatments
+
+```{r}
+library(ggplot2)
+library(cowplot)
+
+plot.data <- 
+   data%>%
+   #add seed.bank ANC to ancestor
+   mutate(seed.bank = if_else(line=="ANC","ANC", as.character(seed.bank)))%>%
+   #summarize means
+   dplyr::select(host, phage, line, seed.bank, colony, perc.spore.std, rel.fit)%>%
+   group_by(host, phage, line, colony, seed.bank) %>%
+   summarize(perc.spore.std = mean(perc.spore.std), rel.fit = mean(rel.fit))
+```
+
+Compare across phage treatments
+```{r}
+#duplicate ancestor data for phage treatment panel
+   plot.data %>%
+   filter(line == "ANC")%>%
+   mutate(phage = "SPO1")%>%
+   bind_rows(plot.data, .)%>%
+#plot
+   ggplot(aes(x=perc.spore.std, y=rel.fit, color=seed.bank))+
+   geom_smooth(method = "lm", linetype=1, se = F, size=1.5)+
+   geom_point(aes(fill=seed.bank), alpha=0.5,shape=21, size=3)+
+   facet_wrap(~phage)+
+   theme_cowplot()+
+   panel_border()+
+   xlab('Sporulation (standardized)')+
+   ylab(expression('Relative fitness ('~italic(w)~')'))+
+   theme(legend.position = "bottom")+
+   ggsave(here("plots/selection-gradient/select.grad-phage.png"),
+    width = 10, height = 7)
+   
+```
+
+Compare across seed bank treatments  
+```{r}
+
+plot.data %>%
+   filter(line != "ANC")%>%
+   ggplot(aes(x=perc.spore.std, y=rel.fit, color=phage))+
+   geom_smooth(method = "lm", linetype=1, se = F, size=1.5)+
+   geom_point(aes(fill=phage), alpha=0.5,shape=21, size=3)+
+   facet_wrap(~seed.bank)+
+   theme_cowplot()+
+   panel_border()+
+   xlab('Sporulation (standardized)')+
+   ylab(expression('Relative fitness ('~italic(w)~')'))+
+   theme(legend.position = "bottom")+
+   ggsave(here("plots/selection-gradient/select.grad-seed.bank.png"),
+    width = 10, height = 7)
+   
+```
 
