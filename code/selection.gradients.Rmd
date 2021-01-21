@@ -53,6 +53,14 @@ spore.hist <- hist(data$perc.spore.std, main = NA,
       breaks = 25)
 ```
 
+# Visualize fitness variation
+
+```{r}
+fitness.hist <- hist(data$rel.fit, main = NA, 
+      xlab = expression('Relative fitness ('~italic(w)~')'), ylab = "Frequency",
+      breaks = 25)
+```
+
 # Select strains
 
 ```{r}
@@ -185,8 +193,35 @@ plot.data <-
    #summarize means
    dplyr::select(host, phage, line, seed.bank, colony, perc.spore.std, rel.fit)%>%
    group_by(host, phage, line, colony, seed.bank) %>%
-   summarize(perc.spore.std = mean(perc.spore.std), rel.fit = mean(rel.fit))
+   summarize(n=n(),
+             se.spore=sd(perc.spore.std)/sqrt(n),
+             se.fit=sd(rel.fit)/sqrt(n),
+             perc.spore.std = mean(perc.spore.std),
+             rel.fit = mean(rel.fit))
 ```
+
+Plot all
+```{r}
+
+   plot.data %>%
+#plot
+   ggplot(aes(x=perc.spore.std, y=rel.fit))+
+   geom_smooth(method = "lm", linetype=1, se = F, size=1.5, color="black")+
+   geom_errorbar(aes(ymin = rel.fit-se.fit, ymax = rel.fit+se.fit,color=seed.bank), width = 0.1,alpha =0.5)+
+      geom_errorbarh(aes(xmin = perc.spore.std-se.spore, xmax = perc.spore.std+se.spore,color=seed.bank), height = 0.1, alpha =0.5)+
+   geom_point(aes(fill=seed.bank), alpha=0.5,shape=21, size=3)+
+   facet_wrap(seed.bank~phage)+
+   theme_cowplot()+
+   panel_border()+
+   xlab('Sporulation (standardized)')+
+   ylab(expression('Relative fitness ('~italic(w)~')'))+
+   theme(legend.position = "bottom")
+   # ggsave(here("plots/selection-gradient/select.grad-phage.png"),
+    # width = 10, height = 7)
+   
+```
+
+
 
 Compare across phage treatments
 ```{r}
