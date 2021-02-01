@@ -1,0 +1,1008 @@
+---
+title: "RM-ANOVA for coevolution with a seed bank"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+  code_folding: hide
+---
+
+```{r setup, include=FALSE}
+library(renv)
+# install to projectlibray the resuired packages
+renv::restore()
+# # Initialize lock file when first setting repo
+# renv::init()
+
+library(here)
+# # set root at project file ("coevolution-ts"). 
+# # Done once at initial setup.
+# here::set_here()
+
+library(tidyverse)
+library(cowplot)
+
+
+library(nlme)
+
+# save the state of the project library to the lockfile (called renv.lock),
+renv::snapshot()
+
+```
+
+## Population density data  
+I have previously consolidated all the data on population density collected for this experiment. This includes:
+
+| Population | What it is | Method of measurement |
+| - | - | - |
+|spore / mL | host spore density | flow-cytometry: low SYBR population |
+|veg / mL | host vegetative cell density | flow-cytometry: high SYBR population |
+| cell /mL | total host cell density (spore+veg) | flow-cytometry
+| phage/ mL | total SPO1 phage density (free phage) | qPCR (SYBR)  with phage specific primers and lysate serial dilution as standard | 
+
+```{r load data, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","coevolution_pop_density.csv"), )
+
+#add columns on host strain and phage treatment  as encoded in culture name
+d <- 
+  d%>%
+  mutate(host=case_when(grepl("W", culture) ~ "WT",
+                         grepl("SN", culture) ~ "dSpoIIE",
+                         grepl("dS", culture) ~ "dSpoIIE"))%>%
+  
+  mutate(phage=case_when(grepl("O", culture) ~ "SPO1",
+                         grepl("Ct", culture) ~ "no_Phage",
+                         grepl("ANC", line) ~ "no_Phage"))%>%
+
+   mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+  #add flask to be used as grouping variable
+  mutate(flask=paste(culture,line, sep = "-"))%>%
+  #remove setup data
+  filter(Time>=0)
+
+# plot raw data
+d%>%
+    pivot_longer(cols=contains(".ml"), names_to="pop",values_to="num.ml")%>%
+    ggplot(aes(x=Time, y=num.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      facet_grid(pop~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e10))
+```
+
+In the first few days of the experiment cell numbers dropped below detection limit in 2 of 3 SNO lines. Missing data cannot be analyzed in RM-ANOVA. I will assign these points the detection limit values.
+
+Points with missing data: 
+```{r}
+d%>%
+  filter(cell.ml<10)
+```
+
+
+---  
+
+**Flow-cytometry detection limit**
+
+The flow cytometer stop conditions were either $50\mu L$ or 50,000 events, whatever came first.  
+In addition, to account for false asignments by noise I required that a gated population have at least 100 events to be taken into account. So the minimal detected population would have 100 cells in $50\mu L$ of analyzed liquid. At this poimt of the experiment we were analyzing x100 diluted samples.
+
+```{r}
+detection.limit <- 100 * (1000/50) * 100
+```
+
+100 events X $1000/50\mu L$ X100 = `r detection.limit` 
+
+I will use $1X10^5$, half the detection limit dor missing value points
+---
+
+
+
+
+```{r}
+d <- d%>%
+  mutate(cell.ml=if_else(cell.ml>10, cell.ml,detection.limit/2))
+# plot total cells of raw data
+d%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+  geom_hline(yintercept = detection.limit, color="red")+
+  geom_label(label="detection limit", x=10, y=log10(detection.limit), color="red")+
+      facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 2e9))
+```
+
+```{r}
+
+# plot total cells of raw data
+d%>%
+  group_by(phage,seed.bank,Time)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=Time, y=cell.ml))+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem,color=seed.bank), alpha=0.7)+
+      geom_line(aes(color=seed.bank), size=1, alpha=0.7)+
+      facet_wrap(~phage)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("cell/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 2e9))
+```
+
+```{r}
+#sumarize all data
+p1 <- d%>%
+  group_by(phage)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=phage, y=cell.ml))+
+      geom_col(aes(fill=phage))+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem), alpha=0.7)+
+      theme_cowplot()+
+  theme(legend.position = "bottom")
+
+
+p2 <- d%>%
+  # group_by(seed.bank,phage)%>%
+      ggplot(aes(x=phage, y=cell.ml))+
+      geom_violin(aes(fill=phage))+
+  # geom_jitter(width = 0.2, height = 0, alpha=.5, color="grey")+
+      theme_cowplot()+
+  scale_y_log10()+
+  ylab("cell/ml(log)")+
+  theme(legend.position = "bottom")
+
+
+plot_grid(p1,p2)
+```
+
+```{r}
+
+d%>%
+  group_by(phage,Time)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=phage, y=cell.ml))+
+      geom_col(aes(fill=phage),position = "dodge")+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem), alpha=0.7)+
+      theme_cowplot()+
+  theme(legend.position = "bottom")+
+  facet_wrap(~as.factor(Time))
+
+
+
+```
+
+
+```{r}
+#sumarize all data
+p1 <- d%>%
+  group_by(seed.bank)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=seed.bank, y=cell.ml))+
+      geom_col(aes(fill=seed.bank))+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem), alpha=0.7)+
+      theme_cowplot()+
+  theme(legend.position = "bottom")
+
+
+p2 <- d%>%
+  # group_by(seed.bank,phage)%>%
+      ggplot(aes(x=seed.bank, y=cell.ml))+
+      geom_violin(aes(fill=seed.bank))+
+  # geom_jitter(width = 0.2, height = 0, alpha=.5, color="grey")+
+      theme_cowplot()+
+  scale_y_log10()+
+  ylab("cell/ml(log)")+
+  theme(legend.position = "bottom")
+
+
+plot_grid(p1,p2)
+```
+
+```{r}
+#sumarize all data
+p1 <- d%>%
+  group_by(seed.bank,phage)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=seed.bank, y=cell.ml))+
+      geom_col(aes(fill=seed.bank))+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem), alpha=0.7)+
+      theme_cowplot()+
+    facet_wrap(~phage)+
+  panel_border()+
+  theme(legend.position = "bottom")
+
+p2 <- d%>%
+  group_by(seed.bank,phage)%>%
+      ggplot(aes(x=seed.bank, y=cell.ml))+
+      geom_violin(aes(fill=seed.bank))+
+  # geom_jitter(width = 0.2, height = 0, alpha=.5, color="grey")+
+      theme_cowplot()+
+  facet_wrap(~phage)+
+  panel_border()+
+  scale_y_log10()+
+  ylab("cell/ml(log)")+
+  theme(legend.position = "bottom")
+
+plot_grid(p1,p2) 
+```
+
+```{r}
+
+
+d%>%
+  group_by(seed.bank,Time)%>%
+  summarise(n=n(),sd=sd(cell.ml), cell.ml=mean(cell.ml), sem=sd/sqrt(n))%>%
+    ggplot(aes(x=seed.bank, y=cell.ml))+
+      geom_col(aes(fill=seed.bank),position = "dodge")+
+  geom_errorbar(aes(ymin=cell.ml-sem,ymax=cell.ml+sem), alpha=0.7)+
+      theme_cowplot()+
+  theme(legend.position = "bottom")+
+  facet_wrap(~as.factor(Time))
+
+
+
+```
+
+
+# Auto correation
+Based on Zuur, Alain F., et al. "Violation of Independence–Part I." Mixed effects models and extensions in ecology with R. Springer, New York, NY, 2009. 143-160.
+```{r}
+#no auto correation model
+M0 <-     lme(cell.ml ~seed.bank*Time, random = ~1|flask ,
+                     data = d%>%filter(phage=="SPO1"))
+
+E <- residuals(M0, type = "normalized")
+acf(E, main="SPO1") 
+
+#no auto correation model
+M0 <-     lme(cell.ml ~seed.bank*Time, random = ~1|flask ,
+                     data = d%>%filter(phage!="SPO1"))
+
+E <- residuals(M0, type = "normalized")
+acf(E, main="no Phage") 
+
+
+```
+
+
+
+## Model selection  
+
+
+### ARMA covariance
+
+This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC).
+```{r arma, message = FALSE, warning = FALSE}
+
+
+
+# initalise empty table
+pq.aic <- tibble(p=1, q=1,aic=1)%>%
+  filter(p>1)
+  
+# Playing around with p&q I found the sappce in which the model conerges is limited
+for(Q in c(0:2)){ 
+  for (P in c(1:(10-2*Q))){ 
+    
+    #this fllowing combination does not work: "iteration limit reached without convergence"
+    if(P==8 & Q==1) next
+    if(P>=3 & Q==2) next
+
+    cur.model <- 
+        d%>% 
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
+            data = .)
+    
+    pq.aic <- 
+      tibble(p=P, q=Q,aic=AIC(cur.model))%>%
+      bind_rows(pq.aic,.)
+    
+  }
+}
+pq.aic%>%arrange(aic)
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,aic))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)")
+
+
+```
+
+I will test the best 5 models against AR1,
+
+### compare AR1 with ARMA
+```{r}
+
+l.rm <- list()
+
+pq.best <- pq.aic%>%
+  slice_min( order_by=aic,n=5)
+
+for (i in 1:nrow(pq.best)){
+  l.rm[[i]] <- 
+    d%>%
+    # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time , 
+        random = ~1|flask, 
+        correlation = corARMA(form = ~ Time | flask,
+                              p=pq.best$p[i],
+                              q=pq.best$q[i]),
+        data = .)
+    
+}
+
+
+# add corAR1 to list
+l.rm[[i+1]] <- 
+  d%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * seed.bank * Time ,
+        random = ~1|flask, 
+        correlation = corAR1(form = ~ Time | flask),
+        data = .)
+
+
+# get list order by AIC
+aic.l <- sapply(l.rm,AIC)%>%
+  sort.list()
+
+
+# compare models by AIC order
+anova.lme(l.rm[[aic.l[6]]],
+          l.rm[[aic.l[5]]],
+          l.rm[[aic.l[4]]],
+          l.rm[[aic.l[3]]],
+          l.rm[[aic.l[2]]],
+          l.rm[[aic.l[1]]])
+```
+
+The best model is not significantly better than any of the other ARMA models. Looking at model 4, has the least degrees of freedom (df=17) :
+
+```{r}
+#display best model results
+summary(l.rm[[aic.l[1]]])
+  car::Anova(l.rm[[aic.l[1]]])
+```
+
+The model wirth ARMA(P=2,Q=1) was chosen. 
+**No significant effect of seed.bank on population density at any level, main effect or ontweraction.**
+
+
+How sensetive would the result be to model selected?
+```{r}
+map(l.rm,anova.lme)
+```
+
+All models show the same story:  
+* The interaction of phage and time has the most significant influence on cell density.  
+* Seed bank is not significant.
+
+## Post hoc
+
+comparing means across seed bank: 
+```{r, warning=F, message=F}
+source(here("code","functions","plot_TukeyHSD.R"))
+
+tuk.p <- TukeyHSD(aov(cell.ml~seed.bank,
+                    data =d%>%
+                      filter(phage=="SPO1")))%>%
+  plot_TukeyHSD(back = "return")
+
+
+tuk.nop <- TukeyHSD(aov(cell.ml~seed.bank,
+                    data =d%>%
+                      filter(phage!="SPO1")))%>%
+  plot_TukeyHSD(back = "return")
+
+plot_grid(tuk.p,tuk.nop,labels = c("SPO1","no Phage"), nrow = 2)
+
+TukeyHSD(aov(cell.ml~seed.bank*phage*Time,data =d))%>%
+                      plot_TukeyHSD(back = "plot")
+```
+
+In the no-phage lines the confidence interval for the difference between seed-bank treatments is just touching 0. This is likely the sourc of the borderline significance osbserved.
+
+=================  
+
+# Host density by host  
+
+================= 
+
+I will repeat the same anlysis but will treat the seed-bank as a 2-level factor: with (WT host) or without ($\Delta$spoIIE) a seed bank.
+
+## Model selection  
+
+
+### ARMA covariance
+
+This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC).
+```{r , message = FALSE, warning = FALSE}
+
+
+
+# initalise empty table
+pq.aic <- tibble(p=1, q=1,aic=1)%>%
+  filter(p>1)
+  
+# Playing around with p&q I found the sappce in which the model conerges is limited
+for(Q in c(0:2)){ 
+  for (P in c(1:(10-2*Q))){ 
+    
+    #this fllowing combination does not work: "iteration limit reached without convergence"
+    if(P>=7 & Q==1) next
+    if(P>=3 & Q==2) next
+
+    cur.model <- 
+        d%>% 
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * host * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
+            data = .)
+    
+    pq.aic <- 
+      tibble(p=P, q=Q,aic=AIC(cur.model))%>%
+      bind_rows(pq.aic,.)
+    
+  }
+}
+pq.aic%>%arrange(aic)
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,aic))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)")
+
+
+```
+
+I will test the best 5 models against AR1,
+
+### compare AR1 with ARMA
+```{r}
+
+l.rm <- list()
+
+pq.best <- pq.aic%>%
+  slice_min( order_by=aic,n=5)
+
+for (i in 1:nrow(pq.best)){
+  l.rm[[i]] <- 
+    d%>%
+    # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * host * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ Time | flask,
+                                  p=pq.best$p[i],q=pq.best$q[i]),
+            data = .)
+    
+}
+
+
+# add corAR1 to list
+l.rm[[i+1]] <- 
+  d%>%
+  # looking only at total cells (cell.ml)
+    lme(cell.ml ~ phage * host * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ Time | flask),
+            data = .)
+
+
+# get list order by AIC
+aic.l <- sapply(l.rm,AIC)%>%
+  sort.list()
+
+
+# compare models by AIC order
+anova.lme(l.rm[[aic.l[6]]],
+          l.rm[[aic.l[5]]],
+          l.rm[[aic.l[4]]],
+          l.rm[[aic.l[3]]],
+          l.rm[[aic.l[2]]],
+          l.rm[[aic.l[1]]])
+```
+
+The best model is not significantly better than any of the other ARMA models. Looking at model 4, has the least degrees of freedom (df=14) :
+
+```{r}
+#display best model results
+summary(l.rm[[aic.l[1]]])
+  anova.lme(l.rm[[aic.l[1]]])
+```
+
+The model wirth ARMA(P=2,Q=1) was chosen. 
+**No significant effect of host on population density at any level, main effect or with interaction.**
+
+
+How sensetive would the result be to model selected?
+```{r}
+map(l.rm,anova.lme)
+```
+
+All models show the same story:  
+* The interaction of phage and time has the most significant influence on cell density.  
+* Seed bank is not significant.
+
+```{r}
+    d%>%
+  # filter(Time>3)%>%
+  # filter(phage=="SPO1")%>%
+    # looking only at total cells (cell.ml)
+    lme(cell.ml ~  seed.bank * phage *Time, random = ~1|flask,
+            # correlation = corARMA(form = ~ Time | flask,
+            #                       p=2,q=1),
+        correlation = corAR1(form = ~Time|flask),
+            data = .)%>%
+  anova.lme()
+```
+
+
+=================  
+
+# phage density  
+
+=================   
+
+```{r}
+d%>%
+  filter(phage=="SPO1")%>%
+    ggplot(aes(x=Time, y=phage.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("phage/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e10))
+```
+
+Here I will remove time 0, the input phage
+
+```{r}
+d%>%
+  filter(phage=="SPO1")%>%
+  filter(Time!=0)%>%
+    ggplot(aes(x=Time, y=phage.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("phage/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e10))
+```
+
+## Model selection  
+
+### ARMA covariance
+
+This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC).
+```{r , message = FALSE, warning = FALSE}
+
+
+
+# initalise empty table
+pq.aic <- tibble(p=1, q=1,aic=1)%>%
+  filter(p>1)
+  
+# Playing around with p&q I found the space in which the model convergence is limited
+for(Q in c(0:2)){ 
+  for (P in c(1:(10-2*Q))){ 
+    
+        #this fllowing combination does not work: "iteration limit reached without convergence"
+    if(P==5 & Q==2) next
+    
+    cur.model <- 
+        d%>% 
+      filter(phage=="SPO1")%>%
+  # looking only at total cells (cell.ml)
+    lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
+            data = .)
+    
+    pq.aic <- 
+      tibble(p=P, q=Q,aic=AIC(cur.model))%>%
+      bind_rows(pq.aic,.)
+    
+  }
+}
+
+pq.aic%>%arrange(aic)
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,aic))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)")
+
+
+```
+
+I will test the best 5 models against AR1,
+
+### compare AR1 with ARMA
+```{r}
+
+l.rm <- list()
+
+pq.best <- pq.aic%>%
+  slice_min( order_by=aic,n=5)
+
+for (i in 1:nrow(pq.best)){
+  l.rm[[i]] <- 
+    d%>%  
+    filter(phage=="SPO1")%>%
+  # looking only at phages (phage.ml)
+    lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask,
+                                  p=pq.best$p[i],q=pq.best$q[i]),
+            data = .)
+    
+}
+
+
+# add corAR1 to list
+l.rm[[i+1]] <- 
+  d%>%
+  filter(phage=="SPO1")%>%
+ # looking only at phages (phage.ml)
+    lme(phage.ml ~ seed.bank * Time , random = ~1|flask, 
+            correlation = corAR1(form = ~ 1 | flask),
+            data = .)
+
+
+# get list order by AIC
+aic.l <- sapply(l.rm,AIC)%>%
+  sort.list()
+
+
+# compare models by AIC order
+anova.lme(l.rm[[aic.l[6]]],
+          l.rm[[aic.l[5]]],
+          l.rm[[aic.l[4]]],
+          l.rm[[aic.l[3]]],
+          l.rm[[aic.l[2]]],
+          l.rm[[aic.l[1]]])
+```
+
+The first 2 best models are comparable but significantly better than the third one. Looking at model with lower DF, model 1:
+
+```{r}
+#display best model results
+summary(l.rm[[aic.l[1]]])
+  anova.lme(l.rm[[aic.l[1]]])
+```
+
+**No significant effect of seed.bank on phage population density at any level.**
+
+How sensetive would the result be to model selected?
+```{r}
+map(l.rm,anova.lme)
+```
+
+All models show the same story:  Seed bank is not significant for phage.
+
+=================  
+
+# spore density  
+
+=================  
+
+```{r}
+d%>%
+  filter(host=="WT")%>%
+    ggplot(aes(x=Time, y=spore.ml))+
+      geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+      theme_bw()+
+      panel_border()+
+      scale_y_log10()+
+  facet_wrap(~phage)+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab("spore/ml (log)")+
+      coord_cartesian(ylim = c(1e5, 1e10))
+```
+
+All points usable.
+
+## Model selection  
+
+### ARMA covariance
+
+This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC).
+```{r , message = FALSE, warning = FALSE}
+
+
+
+# initalise empty table
+pq.aic <- tibble(p=1, q=1,aic=1)%>%
+  filter(p>1)
+  
+# Playing around with p&q I found the space in which the model convergence is limited
+for(Q in c(0:2)){ 
+  for (P in c(1:(10-2*Q))){ 
+    
+        #this fllowing combination does not work: "iteration limit reached without convergence"
+    if(P>=5 & Q==2) next
+    
+    cur.model <- 
+        d%>% 
+      filter(host=="WT")%>%
+  # looking only at total cells (cell.ml)
+    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
+            data = .)
+    
+    pq.aic <- 
+      tibble(p=P, q=Q,aic=AIC(cur.model))%>%
+      bind_rows(pq.aic,.)
+    
+  }
+}
+
+pq.aic%>%arrange(aic)
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,aic))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)")
+
+
+```
+
+I will test the best 5 models against AR1,
+
+### compare AR1 with ARMA
+```{r}
+
+l.rm <- list()
+
+pq.best <- pq.aic%>%
+  slice_min( order_by=aic,n=5)
+
+for (i in 1:nrow(pq.best)){
+  l.rm[[i]] <- 
+        d%>% 
+      filter(host=="WT")%>%
+  # looking only at total spore (spore.ml)
+    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask,
+        correlation = corARMA(form = ~ 1 | flask,
+                              p=pq.best$p[i],q=pq.best$q[i]),
+            data = .)
+    
+}
+
+
+# add corAR1 to list
+l.rm[[i+1]] <- 
+        d%>% 
+      filter(host=="WT")%>%
+  # looking only at total spore (spore.ml)
+    lme(spore.ml ~ phage*seed.bank * Time , random = ~1|flask,
+            correlation = corAR1(form = ~ 1 | flask),
+            data = .)
+
+
+# get list order by AIC
+aic.l <- sapply(l.rm,AIC)%>%
+  sort.list()
+
+
+# compare models by AIC order
+anova.lme(l.rm[[aic.l[6]]],
+          l.rm[[aic.l[5]]],
+          l.rm[[aic.l[4]]],
+          l.rm[[aic.l[3]]],
+          l.rm[[aic.l[2]]],
+          l.rm[[aic.l[1]]])
+```
+
+The first 2 best models are comparable and not significantly better than the third one. Looking at model with lower DF, model 1:
+
+```{r}
+#display best model results
+summary(l.rm[[aic.l[1]]])
+  anova.lme(l.rm[[aic.l[1]]])
+```
+
+**No significant effect of seed.bank treatment on spore population density. However at a 0.1 significancIIe level, there is a seed-bank intraction with time.**
+
+How sensetive would the result be to model selected?
+```{r}
+map(l.rm,anova.lme)
+```
+
+The seed-bank:time interaction is hovering around 0.05, some models have it above and some below.
+
+
+## Post hoc
+
+comparing means across seed bank: 
+```{r, warning=F, message=F}
+source(here("code","functions","plot_TukeyHSD.R"))
+
+tuk.p <- TukeyHSD(aov(spore.ml~seed.bank,
+                    data =d%>%
+                      filter(host=="WT")%>%
+                      filter(phage=="SPO1")))%>%
+  plot_TukeyHSD(back = "return")
+
+
+tuk.nop <- TukeyHSD(aov(spore.ml~seed.bank,
+                    data =d%>%
+                      filter(host=="WT")%>%
+                      filter(phage!="SPO1")))%>%
+  plot_TukeyHSD(back = "return")
+
+plot_grid(tuk.p,tuk.nop,labels = c("SPO1","no Phage"), nrow = 2)
+```
+
+In the no-phage lines the confidence interval for the difference between seed-bank treatments is just touching 0. This is likely the sourc of the borderline significance osbserved.
+
+
+=================  
+
+# percent spore  
+
+=================  
+
+```{r}
+d <- d%>%
+  mutate(perc.spore=100*spore.ml/cell.ml)
+
+d%>%
+  filter(host=="WT")%>%
+    ggplot(aes(x=Time, y=perc.spore))+
+    geom_line(aes(group=flask,color=seed.bank), size=1, alpha=0.7)+
+    theme_bw()+
+    panel_border()+
+  facet_wrap(~phage)+
+  theme(legend.position = "bottom",
+            text=element_text(size=14))+
+  ylab("% spore")+
+  ylim(0,100)
+```
+
+All points usable.
+
+## Model selection  
+
+### ARMA covariance
+
+This is a combined  auto-regeressive model, AR(p) and moving average model, MA(q). I here take a model selection approach to choose these parameters (lowest AIC).
+```{r , message = FALSE, warning = FALSE}
+
+
+
+# initalise empty table
+pq.aic <- tibble(p=1, q=1,aic=1)%>%
+  filter(p>1)
+  
+# Playing around with p&q I found the space in which the model convergence is limited
+for(Q in c(0:2)){ 
+  for (P in c(1:(10-2*Q))){ 
+    
+        #this fllowing combination does not work: "iteration limit reached without convergence"
+    if(P>=4 & Q==2) next
+    
+    cur.model <- 
+        d%>% 
+      filter(host=="WT")%>%
+  # looking only at total cells (cell.ml)
+    lme(perc.spore ~ phage*seed.bank * Time , random = ~1|flask, 
+            correlation = corARMA(form = ~ 1 | flask, p=P,q=Q),
+            data = .)
+    
+    pq.aic <- 
+      tibble(p=P, q=Q,aic=AIC(cur.model))%>%
+      bind_rows(pq.aic,.)
+    
+  }
+}
+
+pq.aic%>%arrange(aic)
+
+pq.aic%>%
+  mutate(q=as.character(q))%>%
+  ggplot(aes(p,aic))+
+  geom_line(aes(color=q),size=1)+
+  geom_point(aes(color=q),size=3)+
+  theme_bw()+
+  scale_x_continuous(breaks = 1:10)+
+  ggtitle("correlation = corARMA(p,q)")
+
+
+```
+
+I will test the best 5 models against AR1,
+
+### compare AR1 with ARMA
+```{r}
+
+l.rm <- list()
+
+pq.best <- pq.aic%>%
+  slice_min( order_by=aic,n=5)
+
+for (i in 1:nrow(pq.best)){
+  l.rm[[i]] <- 
+        d%>% 
+      filter(host=="WT")%>%
+  # looking only at total spore (spore.ml)
+    lme(perc.spore ~ phage*seed.bank * Time , random = ~1|flask,
+        correlation = corARMA(form = ~ 1 | flask,
+                              p=pq.best$p[i],q=pq.best$q[i]),
+            data = .)
+    
+}
+
+
+# add corAR1 to list
+l.rm[[i+1]] <- 
+        d%>% 
+      filter(host=="WT")%>%
+  # looking only at total spore (spore.ml)
+    lme(perc.spore ~ phage*seed.bank * Time , random = ~1|flask,
+            correlation = corAR1(form = ~ 1 | flask),
+            data = .)
+
+
+# get list order by AIC
+aic.l <- sapply(l.rm,AIC)%>%
+  sort.list()
+
+
+# compare models by AIC order
+anova.lme(l.rm[[aic.l[6]]],
+          l.rm[[aic.l[5]]],
+          l.rm[[aic.l[4]]],
+          l.rm[[aic.l[3]]],
+          l.rm[[aic.l[2]]],
+          l.rm[[aic.l[1]]])
+```
+
+The first 2 best models are comparable and not significantly better than the third one. Looking at model with lower DF, model 1:
+
+```{r}
+#display best model results
+summary(l.rm[[aic.l[1]]])
+  anova.lme(l.rm[[aic.l[1]]])
+```
+
+**No significant effect of seed.bank treatment on percent spore in the population density.**
+
+How sensetive would the result be to model selected?
+```{r}
+map(l.rm,anova.lme)
+```
+
+All models have no significant effects for seed bank on percent spores.
