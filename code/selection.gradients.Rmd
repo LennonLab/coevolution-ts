@@ -36,12 +36,12 @@ data <- data.frame(data, perc.spore.std)
 
 ```{r}
 # average fitness for ancestral strain
-anc <- filter(data, host == "WT" & phage == "no_Phage" & line == "ANC") %>%
-   dplyr::select(colony, growth.rate) %>%
-   group_by(colony) %>%
-   summarize(an.growth.rate = mean(growth.rate)) 
-anc.gr <- mean(anc$an.growth.rate)
+anc <- filter(data, host == "WT" & phage == "no_Phage" & line == "ANC")
+
+anc.gr <- mean(anc$growth.rate)
+
 rel.fit <- data$growth.rate / anc.gr
+
 data <- data.frame(data, rel.fit)
 ```
 
@@ -200,27 +200,75 @@ plot.data <-
              rel.fit = mean(rel.fit))
 ```
 
+Calculate correlations
+```{r}
+require(broom)
+require(tidyr)
+d.cor <- tibble()
+d.lm <- tibble()
+
+for (seed in unique(plot.data$seed.bank)){
+   for (phg in  unique(plot.data$phage)){
+      
+      d.tmp <-
+         plot.data%>%
+         filter (seed.bank == seed) %>%
+         filter (phage == phg)
+      
+      if (nrow(d.tmp) < 1) next
+      
+         
+      d.cor <-
+         cor.test(d.tmp$perc.spore.std, d.tmp$rel.fit) %>%
+         tidy() %>%
+         mutate(seed.bank = seed, phage = phg)  %>%
+         bind_rows(d.cor, .)
+      
+      d.lm <- 
+         lm( d.tmp$rel.fit ~d.tmp$perc.spore.std) %>%
+         tidy()%>%
+         mutate(seed.bank = seed, phage = phg)  %>%
+         bind_rows(d.lm, .)
+      
+   }
+}
+
+#make plot lables
+d.cor <- d.cor %>%
+   mutate(lbl = paste0("cor = ", signif(estimate, 3),"\nP = ", signif(p.value, 3)))
+
+d.lm.plot <- 
+   d.lm %>%
+   select(-std.error, -statistic, -p.value) %>%
+   mutate(term = if_else(term == "(Intercept)", "b", "a"))%>%
+   pivot_wider(values_from = estimate, names_from = term)%>%
+   mutate(lbl = paste0("y = ", signif(a, 2),"x + ", signif(b, 2)))
+```
+
+
 Plot all
 ```{r}
 
    plot.data %>%
+   rename(line.rep = line) %>%
 #plot
    ggplot(aes(x=perc.spore.std, y=rel.fit))+
    geom_smooth(method = "lm", linetype=1, se = F, size=1.5, color="black")+
-   geom_errorbar(aes(ymin = rel.fit-se.fit, ymax = rel.fit+se.fit,color=seed.bank), width = 0.1,alpha =0.5)+
-      geom_errorbarh(aes(xmin = perc.spore.std-se.spore, xmax = perc.spore.std+se.spore,color=seed.bank), height = 0.1, alpha =0.5)+
-   geom_point(aes(fill=seed.bank), alpha=0.5,shape=21, size=3)+
+   geom_point(aes(fill=line.rep), alpha=0.5,shape=21, size=3)+
+   #correlation label
+   geom_text(data = d.cor, aes(label = lbl), x=-2, y=2) +
+   geom_text(data = d.lm.plot, aes(label = lbl), x=-1.5, y=0.1) +
    facet_wrap(seed.bank~phage)+
    theme_cowplot()+
    panel_border()+
+   expand_limits(y=0)+
    xlab('Sporulation (standardized)')+
    ylab(expression('Relative fitness ('~italic(w)~')'))+
-   theme(legend.position = "bottom")
-   # ggsave(here("plots/selection-gradient/select.grad-phage.png"),
-    # width = 10, height = 7)
+   theme(legend.position = "bottom")+
+   ggsave(here("plots/selection-gradient/select.grad-treat.png"),
+    width = 10, height = 7)
    
 ```
-
 
 
 Compare across phage treatments
