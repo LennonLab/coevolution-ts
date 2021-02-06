@@ -17,6 +17,8 @@ rm(list=ls())
 # setwd("~/GitHub/coevolution-ts/")
 require("dplyr")
 require(here)
+library(ggplot2)
+library(cowplot)
 ```
 
 # Load data and standardize trait data (percent sporulation)
@@ -53,6 +55,14 @@ data <- data.frame(data, rel.fit)
 spore.hist <- hist(data$perc.spore.std, main = NA, 
       xlab = "standardized % sporulation", ylab = "Frequency",
       breaks = 25)
+
+data%>%
+   ggplot(aes(perc.spore.std)) +
+   geom_histogram() +
+   facet_wrap(~culture, nrow = 3) +
+   xlab("standardized % sporulation") +
+   ylab("Frequency") + 
+   theme_cowplot()
 ```
 
 # Visualize fitness variation
@@ -234,8 +244,6 @@ graphics.off()
 Compare all treatments
 
 ```{r}
-library(ggplot2)
-library(cowplot)
 
 plot.data <- 
    data%>%
