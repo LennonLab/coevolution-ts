@@ -47,6 +47,8 @@ data <- data.frame(data, rel.fit)
 
 # Visualize trait variation
 
+#### Perhaps look at distributions for each populuation or treatment? ###
+
 ```{r}
 spore.hist <- hist(data$perc.spore.std, main = NA, 
       xlab = "standardized % sporulation", ylab = "Frequency",
@@ -81,6 +83,55 @@ wt.pp.short <- filter(data, host == "WT" & phage == "SPO1" & seed.bank == "short
    dplyr::select(colony, line, perc.spore.std, rel.fit) %>%
    group_by(colony, line) %>%
    summarize(perc.spore.std = mean(perc.spore.std), rel.fit = mean(rel.fit)) 
+```
+
+# Multiple regression (indicator variables)
+
+```{r}
+#Create dummy variables for treatments
+# This supplies parameters for ponds; add and subtract for lake parms
+D1 <- (data$phage == "SPO1")*1
+D2 <- (data$seed.bank == "long")*1
+fit <- lm(data$rel.fit ~ data$perc.spore.std + D1 + data$perc.spore.std*D1 + 
+             D2 + data$perc.spore.std*D2)
+summary(fit)
+
+# I'm unsure whether the model above is sufficient or appropriate for testing
+# whether or not there's an interaction between phage and seed bank on 
+# fitness-sporulation relationship.
+# I tried adding another term (data$perc.spore.std*D1*D2) and this was not n.s.,
+# but it did change things a little bit
+
+# Initial interpretations of `fit`:
+
+# Overall, multiple regression model is highly significant (P = 9.779e-07)
+# But there's quite a bit of unexplained variation (R2 = 0.19)
+
+# Global intercept is different from zero (P < 2e-16), although that's not interesting
+# (Perhaps, might be more interesting to know if intercept is different from 1)
+# In any case, phage (D1) seems to decrease intercept (P = 0.045)
+# While seed bank (D2) seems to marginally decrease intercept (P = 0.053)
+
+# Overall, relative fitness is not related to sporulation (P = 0.80)
+# And is not affected by degree of seed bank (P = 0.67)
+# However, the sporulation-fitness relationship is significantly modified by phage (P = 0.009)
+# Results suggest:
+# 1) sporulation in the ancestral strain is not under selection (or "under relaxed selection")
+# 2) after evolving with SPO1, sporulation is under significant positive selection
+# This is consistent with hypothesis that sporulation can serve as refuge against phage
+# Because we've standardized fitness and trait value, we should be able to interpret the selection coefficient
+# In this case, selection coefficient equals -0.009704 + 0.122 = 0.1127. Compare!
+# 3) Small vs. long seed bank does not alter selection coefficient
+# But perhaps what we want to know is whether seed bank treatment is detectable in presence of phage
+# See commment above re: data$perc.spore.std*D1*D2
+
+coefficients <- coefficients(fit) # model coefficients
+confit <- confint(fit, level = 0.95) # 95% CI for parameters
+predicted <- fitted(fit) # predicted values
+rediduals <- residuals(fit) # residuals
+anova <- anova(fit) # anova table
+vcov <- vcov(fit) # covariance matrix for model parameters
+influence <- influence(fit) # regression diagnostics
 ```
 
 # Plot selection gradient
