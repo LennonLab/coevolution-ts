@@ -293,8 +293,17 @@ for (seed in unique(plot.data$seed.bank)){
 }
 
 #make plot lables
-d.cor <- d.cor %>%
-   mutate(lbl = paste0("cor = ", signif(estimate, 3),"\nP = ", signif(p.value, 3)))
+d.cor <-
+   #add slope
+   d.lm%>%
+   filter(term != "(Intercept)") %>%
+   select(slope = estimate, seed.bank, phage)%>%
+   # add to d.cor
+   left_join(d.cor, ., by =c( "seed.bank", "phage")) %>%
+   # make label
+   mutate(lbl = paste0("cor = ", signif(estimate, 3),
+                       "\nP = ", signif(p.value, 3),
+                       "\nslope = ", signif(slope, 3)))
 
 d.lm.plot <- 
    d.lm %>%
