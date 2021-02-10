@@ -2,9 +2,9 @@
 title: "RM-ANOVA for coevolution with a seed bank"
 subtitle: "Total cell density"
 output:
-  pdf_document: default
   html_notebook:
     code_folding: hide
+  pdf_document: default
 editor_options:
   chunk_output_type: inline
 ---
@@ -432,5 +432,29 @@ plot_grid(p1,p2, labels = "auto")
 A slight increase in percent of spores is seen in the phage infected cultures, an not in the absence of phage.
 
 `Is there a way to estimate if this increase is significant`
+
+```{r}
+cor.phage <- coevo.pairs%>%
+  # make time continuous 
+  mutate(day=as.numeric(time.fct))%>%
+  # phage infected only
+  filter(phage == "SPO1") %>%
+  select(day,estimate)
+
+  #test correlation
+  cor.test(x=cor.phage$day, y=cor.phage$estimate, method = "pearson")
+  
+cor.nophage <- coevo.pairs%>%
+  # make time continuous 
+  mutate(day=as.numeric(time.fct))%>%
+  # phage infected only
+  filter(phage == "no_Phage") %>%
+  select(day,estimate)
+
+  #test correlation
+  cor.test(x=cor.nophage$day, y=cor.nophage$estimate, method = "pearson")
+```
+
+
 
 # Summary
