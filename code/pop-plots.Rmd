@@ -71,7 +71,7 @@ d%>%
   mutate(Time = 2 * Time) %>%
 
 ggplot(aes(x=Time, y = m))+
-  geom_line(aes(color=pop), size=.7)+
+  geom_line(aes(color=pop))+
   geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
   geom_point(aes(shape=pop, fill= pop), size = 1.5)+
   facet_wrap(~seed.bank)+
@@ -121,7 +121,7 @@ d%>%
   mutate(Time = 2 * Time) %>%
 
 ggplot(aes(x=Time, y = m))+
-  geom_line(aes(color=pop), size=.7)+
+  geom_line(aes(color=pop))+
   geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
   geom_point(aes(shape=pop, fill= pop), size = 1.5)+
   facet_wrap(~seed.bank)+
@@ -145,6 +145,52 @@ ggplot(aes(x=Time, y = m))+
 
 ```
 
+# Hosts only
+```{r}
+d%>%
+  
+  select(-spore.ml, -veg.ml, -phage.ml ) %>%
+  mutate (pop = if_else(phage == "SPO1", "with phage","no phage")) %>%
+
+  # summarize across replicate lines  
+  group_by(seed.bank, Time, pop ) %>%
+  summarise(n = n(), m = mean(cell.ml), v = sd(cell.ml)/sqrt(n)) %>%
+  
+  #ajust factor order for seed bank
+  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
+                          seed.bank ==  "short" ~ "short seed bank",
+                          seed.bank ==  "none" ~ "no seed bank")) %>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+  
+  #make time by day
+  mutate(Time = 2 * Time) %>%
+
+ggplot(aes(x=Time, y = m))+
+  geom_line(aes(color=pop))+
+  geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
+  geom_point(aes(shape=pop, fill= pop), size = 1.5)+
+  facet_wrap(~seed.bank)+
+      theme_cowplot()+
+      panel_border(color = "black", size = 1.5)+
+  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x))) +
+  scale_x_continuous(breaks = c(0,7,14,21,28))+
+  scale_shape_manual(values = c(23,21))+
+  scale_color_manual(values = c("black","black"))+
+  scale_fill_manual(values = c("black", "white"))+
+      theme(legend.position = c(.81, .1),
+            legend.title = element_blank(),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"))+
+  ylab("Abundance (per mL)")+
+  xlab("Time (day)")+
+  ggsave(here("plots","pop-dynamics-hosts.png"), width = 7, height = 4)
+
+
+```
+
+All plotted together
 ```{r}
 d1 <- d%>%
   
