@@ -1,0 +1,211 @@
+---
+title: "population plots for coevolution with a seed bank"
+output:
+  pdf_document: default
+  html_notebook:
+    code_folding: hide
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+library(renv)
+# #install to project library the required packages
+# renv::restore()
+# # Initialize lock file when first setting repo
+# renv::init()
+
+library(here)
+# # set root at project file ("coevolution-ts"). 
+# # Done once at initial setup.
+# here::set_here()
+
+library(tidyverse)
+library(cowplot)
+
+
+# save the state of the project library to the lockfile (called renv.lock),
+# renv::snapshot()
+
+# https://stackoverflow.com/questions/10762287/how-can-i-format-axis-labels-with-exponents-with-ggplot2-and-scales
+scientific_10 <- function(x) {
+  parse(text=gsub("e", " %*% 10^", scales::scientific_format()(x)))
+}
+
+scientific_10b <- function(x) {
+  parse(text=gsub("e", " %*% 10^", scales::scientific_format()(x)))
+}
+
+library(scales)
+```
+
+Load organized data  
+```{r, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","organized_pop_density.csv"), )
+
+```
+
+
+
+
+```{r}
+d%>%
+  
+  filter(phage == "SPO1") %>%
+  select(-spore.ml, -veg.ml ) %>%
+  pivot_longer(cols = c(cell.ml, phage.ml), names_to = "pop", values_to = "no.ml") %>%
+  mutate (pop = if_else(pop == "cell.ml", "host", "phage")) %>%
+
+  # summarize across replicate lines  
+  group_by(seed.bank, Time, pop ) %>%
+  summarise(n = n(), m = mean(no.ml), v = sd(no.ml)/sqrt(n)) %>%
+  
+  #ajust factor order for seed bank
+  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
+                          seed.bank ==  "short" ~ "short seed bank",
+                          seed.bank ==  "none" ~ "no seed bank")) %>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+  
+  #make time by day
+  mutate(Time = 2 * Time) %>%
+
+ggplot(aes(x=Time, y = m))+
+  geom_line(aes(color=pop), size=.7)+
+  geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
+  geom_point(aes(shape=pop, fill= pop), size = 1.5)+
+  facet_wrap(~seed.bank)+
+      theme_cowplot()+
+      panel_border(color = "black", size = 1.5)+
+  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x))) +
+  scale_x_continuous(breaks = c(0,7,14,21,28))+
+  scale_shape_manual(values = c(21,22), guide = guide_legend(reverse = TRUE))+
+  scale_color_manual(values = c("black","black"), guide = guide_legend(reverse = TRUE))+
+  scale_fill_manual(values = c("white", "black"), guide = guide_legend(reverse = TRUE))+
+      theme(legend.position = c(.86, .1),
+            legend.title = element_blank(),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"))+
+  ylab("Abundance (per mL)")+
+  xlab("Time (day)")+
+  ggsave(here("plots","pop-dynamics.png"), width = 7, height = 4)
+
+
+```
+
+Plot of uninfected host
+
+```{r}
+d%>%
+  
+  filter(phage != "SPO1") %>%
+  select(-spore.ml, -veg.ml ) %>%
+  pivot_longer(cols = c(cell.ml, phage.ml), names_to = "pop", values_to = "no.ml") %>%
+  # remove phage from non infected lines
+  filter (!(phage == "no_Phage" & pop == "phage.ml")) %>%
+  mutate (pop = if_else(pop == "cell.ml", "host", "phage")) %>%
+
+  # summarize across replicate lines  
+  group_by(seed.bank, Time, pop ) %>%
+  summarise(n = n(), m = mean(no.ml), v = sd(no.ml)/sqrt(n)) %>%
+  
+  #ajust factor order for seed bank
+  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
+                          seed.bank ==  "short" ~ "short seed bank",
+                          seed.bank ==  "none" ~ "no seed bank")) %>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+  
+  #make time by day
+  mutate(Time = 2 * Time) %>%
+
+ggplot(aes(x=Time, y = m))+
+  geom_line(aes(color=pop), size=.7)+
+  geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
+  geom_point(aes(shape=pop, fill= pop), size = 1.5)+
+  facet_wrap(~seed.bank)+
+      theme_cowplot()+
+      panel_border(color = "black", size = 1.5)+
+  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x)),
+              limits = c(1e5,1e10)) +
+  scale_x_continuous(breaks = c(0,7,14,21,28))+
+  scale_shape_manual(values = c(21,22), guide = guide_legend(reverse = TRUE))+
+  scale_color_manual(values = c("black","black"), guide = guide_legend(reverse = TRUE))+
+  scale_fill_manual(values = c("white", "black"), guide = guide_legend(reverse = TRUE))+
+      theme(legend.position = "none",
+            legend.title = element_blank(),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"))+
+  ylab("Abundance (per mL)")+
+  xlab("Time (day)")+
+  ggsave(here("plots","pop-dynamics-uninfected.png"), width = 7, height = 4)
+
+
+```
+
+```{r}
+d1 <- d%>%
+  
+  select(-spore.ml, -veg.ml ) %>%
+  pivot_longer(cols = c(cell.ml, phage.ml), names_to = "pop", values_to = "no.ml") %>%
+  # remove phage from non infected lines
+  filter (!(phage == "no_Phage" & pop == "phage.ml")) %>%
+  
+  # separate infected and non infected host 
+  # mutate (pop = if_else(pop == "cell.ml", "host", "phage")) %>%
+  mutate (pop = case_when(pop == "phage.ml" ~ "phage",
+                          phage ==  "SPO1" ~ "infected host",
+                          phage ==  "no_Phage" ~ "uninfected host")) %>%
+
+  # summarize across replicate lines  
+  group_by(seed.bank, Time, pop ) %>%
+  summarise(n = n(), m = mean(no.ml), v = sd(no.ml)/sqrt(n)) %>%
+  
+  #ajust factor order for seed bank
+  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
+                          seed.bank ==  "short" ~ "short seed bank",
+                          seed.bank ==  "none" ~ "no seed bank")) %>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+  
+   #ajust factor order for populations
+  mutate(pop=as.factor(pop))%>%
+  mutate(pop = fct_relevel(pop, "uninfected host","infected host","phage")) %>%
+  
+  #make time by day
+  mutate(Time = 2 * Time)
+
+d.inf <- d1 %>%
+  filter (pop != "uninfected host")
+
+d.nophage <- d1 %>%
+    filter (pop == "uninfected host")
+
+d.inf %>%
+ggplot(aes(x=Time, y = m))+
+  geom_line(data = d.nophage, aes(color=pop, color= pop), size=1)+
+  geom_linerange(data = d.nophage, aes(ymin = m-v, ymax = m+v), color = "grey", size = 0.35)+
+  
+  geom_line(aes(color=pop), size=1)+
+  geom_pointrange(aes(ymin = m-v, ymax = m+v,
+                      shape=pop, fill= pop), size = 0.35)+
+  facet_wrap(~seed.bank)+
+      theme_cowplot()+
+      panel_border(color = "black", size = 2)+
+  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x))) +
+  scale_x_continuous(breaks = c(0,7,14,21,28))+
+  scale_shape_manual(values = c(21,22))+
+  scale_color_manual(values = c("black", "black","grey"))+
+  scale_fill_manual(values = c("white", "black"))+
+      theme(legend.position = "bottom",
+            text=element_text(size=14),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"))+
+  ylab("Abundance (per mL)")+
+  xlab("Time (day)")
+
+
+```
