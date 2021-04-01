@@ -94,6 +94,72 @@ ggplot(aes(x=Time, y = m))+
 
 ```
 
+```{r}
+d.bg <- d%>%
+  
+  filter(phage == "SPO1") %>%
+  select(-spore.ml, -veg.ml ) %>%
+  pivot_longer(cols = c(cell.ml, phage.ml), names_to = "pop", values_to = "no.ml") %>%
+  mutate (pop = if_else(pop == "cell.ml", "host", "phage")) %>%
+
+  #ajust factor order for seed bank
+  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
+                          seed.bank ==  "short" ~ "short seed bank",
+                          seed.bank ==  "none" ~ "no seed bank")) %>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+  
+  #make time by day
+  mutate(Time = 2 * Time) 
+
+
+
+d%>%
+  
+  filter(phage == "SPO1") %>%
+  select(-spore.ml, -veg.ml ) %>%
+  pivot_longer(cols = c(cell.ml, phage.ml), names_to = "pop", values_to = "no.ml") %>%
+  mutate (pop = if_else(pop == "cell.ml", "host", "phage")) %>%
+
+  # summarize across replicate lines  
+  group_by(seed.bank, Time, pop ) %>%
+  summarise(n = n(), m = mean(no.ml), v = sd(no.ml)/sqrt(n)) %>%
+  
+  #ajust factor order for seed bank
+  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
+                          seed.bank ==  "short" ~ "short seed bank",
+                          seed.bank ==  "none" ~ "no seed bank")) %>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+  
+  #make time by day
+  mutate(Time = 2 * Time) %>%
+
+ggplot(aes(x=Time, y = m))+
+  geom_line(data = d.bg, aes(y = no.ml, group = interaction(line,pop)), color = "grey")+
+  geom_line(aes(color=pop))+
+  geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
+  geom_point(aes(shape=pop, fill= pop), size = 1.5)+
+  facet_wrap(~seed.bank)+
+      theme_cowplot()+
+      panel_border(color = "black", size = 1.5)+
+  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x))) +
+  scale_x_continuous(breaks = c(0,7,14,21,28))+
+  scale_shape_manual(values = c(21,22), guide = guide_legend(reverse = TRUE))+
+  scale_color_manual(values = c("black","black"), guide = guide_legend(reverse = TRUE))+
+  scale_fill_manual(values = c("white", "black"), guide = guide_legend(reverse = TRUE))+
+      theme(legend.position = c(.86, .1),
+            legend.title = element_blank(),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"))+
+  ylab("Abundance (per mL)")+
+  xlab("Time (day)")+
+  ggsave(here("plots","pop-dynamics-bg.png"), width = 7, height = 4)
+
+
+```
+
 Plot of uninfected host
 
 ```{r}
