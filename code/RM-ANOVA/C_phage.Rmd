@@ -452,6 +452,15 @@ plot_grid(p1,p2,nrow = 2, labels = "auto")
 
 Confirming that there is a trend of decline in phage density over time.
 
+```{r}
+
+phage <- tidy(emm_t) %>% pull(estimate)
+Time <-  tidy(emm_t) %>% pull(time.fct) %>% as.numeric()
+cor.test(Time, phage)
+
+```
+
+
 # Summary
 
 The effect of seed bank treatment on phage population dynamics is very small, with a significant differences between short and long seed-bank lines observed only at the last few days of the experiment.  
