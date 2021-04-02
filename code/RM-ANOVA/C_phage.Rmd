@@ -459,6 +459,72 @@ Time <-  tidy(emm_t) %>% pull(time.fct) %>% as.numeric()
 cor.test(Time, phage)
 
 ```
+```{r}
+d.cor <- 
+  tidy(coevo.emm)%>%
+  select(time.fct, seed.bank, estimate)%>%
+  mutate(Time = as.numeric(time.fct))%>%
+  select(-time.fct)%>%
+  pivot_wider(names_from = seed.bank, values_from = estimate) 
+
+  cor.test(~Time + long, data = d.cor)
+  cor.test(~Time + short, data = d.cor)
+  cor.test(~Time + none, data = d.cor)
+  
+```
+
+correlation on raw data
+
+```{r}
+d.cor <- 
+  d%>%
+  select(Time, seed.bank, phage.ml) 
+
+d.cor%>%
+  filter(seed.bank=="long") %>%
+  cor.test(~Time + phage.ml, data = .)
+
+d.cor%>%
+  filter(seed.bank=="short") %>%
+  cor.test(~Time + phage.ml, data = .)
+
+d.cor%>%
+  filter(seed.bank=="none") %>%
+  cor.test(~Time + phage.ml, data = .)
+  
+```
+
+```{r}
+p1 <- 
+  tidy(coevo.emm) %>%
+  # make time continuous for plotting.
+  mutate(day=as.numeric(time.fct))%>%
+  #plot
+  ggplot(aes(x=day, y=estimate))+
+  geom_smooth(method = "lm")+
+  geom_point()+
+  geom_line()+
+  facet_grid(~seed.bank)+
+  theme_cowplot()+
+  panel_border()
+
+p2 <- 
+  tidy(coevo.emm) %>%
+  # make time continuous for plotting.
+  mutate(day=as.numeric(time.fct))%>%
+  #plot
+  ggplot(aes(x=day, y=-log10(p.value)))+
+  geom_point()+
+  geom_line()+
+  facet_grid(~seed.bank)+
+  theme_cowplot()+
+  panel_border()
+
+
+
+
+plot_grid(p1,p2,nrow = 2, labels = "auto") 
+```
 
 
 # Summary
