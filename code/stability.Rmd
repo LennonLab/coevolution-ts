@@ -148,3 +148,66 @@ contrast(res.emm, method = "pairwise")
 
 plot(res.emm)+theme_bw()
 ```
+
+
+
+
+# stability over time
+
+```{r}
+library(RcppRoll)
+
+win.size <- 7
+
+cell.stab.win <- 
+  d%>%
+  #make time by dya
+  mutate(Time= Time*2) %>%
+  #selecet time period to analyze
+  filter(Time>=0)%>%
+  # looking only at total cells
+  select(Time,flask, host, phage, seed.bank,cell.ml)%>%
+  mutate(cell.ml=log10(cell.ml))%>%
+  group_by(flask)%>%
+  #stability = mean / SD (over time)
+  summarise(Time=roll_mean(Time,win.size,fill=NA ),
+            t.mean=roll_mean(cell.ml,win.size,fill=NA ),
+            t.sd=roll_sd(cell.ml,win.size,fill=NA ),
+            stability=t.mean/t.sd)
+
+
+cell.stab.win <- 
+  cell.stab.win%>%
+  filter(!is.na(Time))%>%
+    mutate(host=case_when(grepl("W", flask) ~ "WT",
+                         grepl("SN", flask) ~ "dSpoIIE",
+                         grepl("dS", flask) ~ "dSpoIIE"))%>%
+  
+    mutate(phage=case_when(grepl("O", flask) ~ "SPO1",
+                           grepl("Ct", flask) ~ "no_Phage"))%>%
+    
+    mutate(seed.bank=case_when(grepl("SN", flask) ~ "none",
+                                grepl("WS", flask) ~ "short",
+                                grepl("WL", flask) ~ "long")) %>%
+    
+    mutate(line=str_sub(flask, -2,-1))
+
+# #summarise
+# sum.cell.stab <- 
+#   cell.stab%>%
+#     group_by(seed.bank,phage) %>% 
+#     summarise(
+#       sd = sd(stability),
+#       stability = mean(stability))
+    
+    
+  # plot
+cell.stab.win%>%
+  ggplot(aes(x=Time, y=stability))+
+  geom_line(aes(color=line))+
+  facet_grid(seed.bank~phage)+
+  theme_cowplot()
+
+
+```
+
