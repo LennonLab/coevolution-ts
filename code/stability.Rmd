@@ -118,19 +118,6 @@ summary(aov_stab)
 ```
 
 Yes, there is! Post-hoc:
-
-```{r, message=F}
-tuk <- TukeyHSD(aov_stab)
-
-tuk
-# I wrote a function to nicely plot the results of this test
-source(here("code","functions", "plot_TukeyHSD.R"))
-
-plot_TukeyHSD (tuk)
-```
-
-The difference in stability is driven by a significant difference in stability between the long-residence seed-bank and the no seed-bank treatments. the short-residence seed-bank is not significantly distinguishable from either of the other treatments.
-
 ```{r}
 library(emmeans)
 
@@ -138,6 +125,26 @@ res.emm <- emmeans(aov_stab, c("seed.bank", "phage"))
 
 contrast(res.emm,by="phage", method = "pairwise")
 
-plot(res.emm)
+plot(res.emm)+theme_bw()
 ```
 
+```{r}
+library(emmeans)
+
+res.emm <- emmeans(aov_stab, c("seed.bank"))
+
+contrast(res.emm, method = "pairwise")
+
+plot(res.emm)+theme_bw()
+```
+
+
+```{r}
+library(emmeans)
+
+res.emm <- emmeans(aov_stab, c("phage"))
+
+contrast(res.emm, method = "pairwise")
+
+plot(res.emm)+theme_bw()
+```
