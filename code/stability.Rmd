@@ -1,0 +1,143 @@
+---
+title: "Stability analysis for coevolution with a seed bank"
+output:
+  pdf_document: default
+  html_notebook:
+    code_folding: hide
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+library(renv)
+# #install to project library the required packages
+# renv::restore()
+# # Initialize lock file when first setting repo
+# renv::init()
+
+library(here)
+# # set root at project file ("coevolution-ts"). 
+# # Done once at initial setup.
+# here::set_here()
+
+library(tidyverse)
+library(cowplot)
+library(car)
+
+# save the state of the project library to the lockfile (called renv.lock),
+# renv::snapshot()
+
+```
+
+Load organized data  
+```{r, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","organized_pop_density.csv"), )
+
+```
+
+
+```{r}
+# # Multivariate transformation to normality within levels of 'htype'
+# bx.cx <- powerTransform(cell.ml ~ phage*seed.bank*line, d)
+# summary(bx.cx)
+# 
+# 
+# d <- d%>%
+#   mutate(bxcx.response=bcPower(cell.ml, bx.cx$roundlam))
+# 
+# # Levene's test with multiple independent variables
+# car::leveneTest(bxcx.response ~ phage*seed.bank*line, data = d)
+```
+
+
+```{r, echo=F}
+#Calculate stability for each population over time
+cell.stab <- 
+  d%>%
+  #make time by dya
+  mutate(Time= Time*2) %>%
+  #selecet time period to analyze
+  filter(Time>=0)%>%
+  # looking only at total cells
+  select(Time,flask, host, phage, seed.bank,cell.ml)%>%
+  mutate(cell.ml=log10(cell.ml))%>%
+  group_by(flask)%>%
+  #stability = mean / SD (over time)
+  summarise(t.mean=mean(cell.ml), t.sd=sd(cell.ml), stability=t.mean/t.sd)
+
+
+
+
+cell.stab <- 
+  cell.stab%>%
+    mutate(host=case_when(grepl("W", flask) ~ "WT",
+                         grepl("SN", flask) ~ "dSpoIIE",
+                         grepl("dS", flask) ~ "dSpoIIE"))%>%
+  
+    mutate(phage=case_when(grepl("O", flask) ~ "SPO1",
+                           grepl("Ct", flask) ~ "no_Phage"))%>%
+    
+    mutate(seed.bank=case_when(grepl("SN", flask) ~ "none",
+                                grepl("WS", flask) ~ "short",
+                                grepl("WL", flask) ~ "long"))%>%
+     mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+    
+    mutate(line=str_sub(flask, -2,-1))
+
+#summarise
+sum.cell.stab <- 
+  cell.stab%>%
+    group_by(seed.bank,phage) %>% 
+    summarise(
+      sd = sd(stability),
+      stability = mean(stability))
+    
+    
+  # plot
+cell.stab%>%
+  ggplot(aes(x=seed.bank, y=stability))+
+  geom_crossbar(data=sum.cell.stab,
+                  aes(ymin=stability-sd, ymax=stability+sd), width=0.3)+
+  geom_dotplot(binaxis='y', stackdir='center', fill="white", alpha=0.5)+
+  # geom_jitter(shape=21, fill="grey", size=2, width = 0.05, height = 0)+
+  facet_wrap(~phage)+
+  theme_cowplot()+
+  ggtitle("Observed data on total cell density")
+```
+
+Is there statistical support for seed bank stability?
+
+```{r stability stats}
+aov_stab <- 
+  aov(stability~seed.bank*phage, 
+      data = cell.stab)
+    # data = filter(cell.stab, phage=="SPO1"))
+  
+summary(aov_stab)
+# plot(aov_stab)
+```
+
+Yes, there is! Post-hoc:
+
+```{r, message=F}
+tuk <- TukeyHSD(aov_stab)
+
+tuk
+# I wrote a function to nicely plot the results of this test
+source(here("code","functions", "plot_TukeyHSD.R"))
+
+plot_TukeyHSD (tuk)
+```
+
+The difference in stability is driven by a significant difference in stability between the long-residence seed-bank and the no seed-bank treatments. the short-residence seed-bank is not significantly distinguishable from either of the other treatments.
+
+```{r}
+library(emmeans)
+
+res.emm <- emmeans(aov_stab, c("seed.bank", "phage"))
+
+contrast(res.emm,by="phage", method = "pairwise")
+
+plot(res.emm)
+```
+
