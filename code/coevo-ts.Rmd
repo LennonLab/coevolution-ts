@@ -398,8 +398,9 @@ I will test this seperatly for w. and w/o phage
 
 ```{r stability stats}
 aov_stab <- 
-  aov(stability~seed.bank, 
-    data = filter(cell.stab, phage=="SPO1"))
+  aov(stability~seed.bank*phage, 
+      data = cell.stab)
+    # data = filter(cell.stab, phage=="SPO1"))
   
 summary(aov_stab)
 ```
@@ -413,7 +414,7 @@ tuk
 # I wrote a function to nicely plot the results of this test
 source(here("code","functions", "plot_TukeyHSD.R"))
 
-plot_TukeyHSD (tuk)
+plot_TukeyHSD (tuk, "plot")
 ```
 
 The difference in stability is driven by a significant difference in stability between the long-residence seed-bank and the no seed-bank treatments. the short-residence seed-bank is not significantly distinguishable from either of the other treatments.
