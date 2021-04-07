@@ -157,11 +157,11 @@ plot(res.emm)+theme_bw()
 ```{r}
 library(RcppRoll)
 
-win.size <- 7
+win.size <-7
 
 cell.stab.win <- 
   d%>%
-  #make time by dya
+  #make time by day
   mutate(Time= Time*2) %>%
   #selecet time period to analyze
   filter(Time>=0)%>%
@@ -170,9 +170,9 @@ cell.stab.win <-
   mutate(cell.ml=log10(cell.ml))%>%
   group_by(flask)%>%
   #stability = mean / SD (over time)
-  summarise(Time=roll_mean(Time,win.size,fill=NA ),
-            t.mean=roll_mean(cell.ml,win.size,fill=NA ),
-            t.sd=roll_sd(cell.ml,win.size,fill=NA ),
+  summarise(Time=roll_mean(Time,win.size, align = "center", fill=NA ),
+            t.mean=roll_mean(cell.ml,win.size, align = "center", fill=NA ),
+            t.sd=roll_sd(cell.ml,win.size, align = "center", fill=NA ),
             stability=t.mean/t.sd)
 
 
@@ -192,22 +192,51 @@ cell.stab.win <-
     
     mutate(line=str_sub(flask, -2,-1))
 
-# #summarise
-# sum.cell.stab <- 
-#   cell.stab%>%
-#     group_by(seed.bank,phage) %>% 
-#     summarise(
-#       sd = sd(stability),
-#       stability = mean(stability))
+#summarise
+sum.cell.stab.win<-
+  cell.stab.win%>%
+    group_by(Time,seed.bank,phage) %>%
+    summarise(
+      sd = sd(stability),
+      stability = mean(stability),
+      n=n())%>%
+  mutate(sem=sd/sqrt(n)) %>%
+  
+  #ajust factor order for seed bank
+  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
+                          seed.bank ==  "short" ~ "short seed bank",
+                          seed.bank ==  "none" ~ "no seed bank")) %>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank", "no seed bank")) %>%
+  
+  mutate (phage = if_else(phage == "no_Phage", "no phage", "with phage")) %>%
+    mutate(phage=as.factor(phage))%>%
+  mutate(phage = fct_relevel(phage, "with phage","no phage"))
+
     
     
   # plot
-cell.stab.win%>%
-  ggplot(aes(x=Time, y=stability))+
-  geom_line(aes(color=line))+
-  facet_grid(seed.bank~phage)+
-  theme_cowplot()
-
+sum.cell.stab.win%>%
+ggplot(aes(x=Time, y = stability, color = seed.bank))+
+  geom_line()+
+  geom_linerange(aes(ymin = stability-sem, ymax = stability+sem),
+                 size = 0.5, show.legend = FALSE)+
+  geom_point(aes(shape=seed.bank, fill= seed.bank), size = 1.5)+
+  facet_wrap( ~ phage)+
+      theme_cowplot()+
+      panel_border(color = "black", size = 1.5)+
+  scale_x_continuous(breaks = c(0,7,14,21,28), limits = c(0,28))+
+  scale_shape_manual(values = c(21,22,24))+
+  scale_color_viridis_d()+
+  scale_fill_viridis_d()+
+      theme(legend.position = c(.75, .12),
+            legend.title = element_blank(),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"))+
+  ylab("Stability")+
+  xlab("Time (day)")+
+  labs(caption = paste0("stability = mean/SD\nCalculated from log transformed cell abundance data with sliding window of ",win.size, " days" ))+
+  ggsave(here("plots", "stability-window.png"), width = 8, height = 5)
 
 ```
 
