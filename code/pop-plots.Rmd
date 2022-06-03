@@ -43,6 +43,12 @@ Load organized data
 ```{r, echo=FALSE, message=FALSE}
 d <- read_csv(here("data","organized_pop_density.csv"), )
 
+# focus on long vs n seed bank
+d <- d %>% 
+  filter(seed.bank != "short") %>% 
+   mutate(seed.bank = 
+            if_else(host=="WT", "with-seed-bank", "no-seed-bank"))
+
 ```
 
 
@@ -61,11 +67,7 @@ d%>%
   summarise(n = n(), m = mean(no.ml), v = sd(no.ml)/sqrt(n)) %>%
   
   #ajust factor order for seed bank
-  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
-                          seed.bank ==  "short" ~ "short seed bank",
-                          seed.bank ==  "none" ~ "no seed bank")) %>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+   mutate(seed.bank = as_factor(seed.bank) %>% fct_rev()) %>% 
   
   #make time by day
   mutate(Time = 2 * Time) %>%
@@ -103,11 +105,7 @@ d.bg <- d%>%
   mutate (pop = if_else(pop == "cell.ml", "host", "phage")) %>%
 
   #ajust factor order for seed bank
-  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
-                          seed.bank ==  "short" ~ "short seed bank",
-                          seed.bank ==  "none" ~ "no seed bank")) %>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+   mutate(seed.bank = as_factor(seed.bank) %>% fct_rev()) %>% 
   
   #make time by day
   mutate(Time = 2 * Time) 
@@ -124,13 +122,9 @@ d%>%
   # summarize across replicate lines  
   group_by(seed.bank, Time, pop ) %>%
   summarise(n = n(), m = mean(no.ml), v = sd(no.ml)/sqrt(n)) %>%
-  
-  #ajust factor order for seed bank
-  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
-                          seed.bank ==  "short" ~ "short seed bank",
-                          seed.bank ==  "none" ~ "no seed bank")) %>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+
+    #ajust factor order for seed bank
+   mutate(seed.bank = as_factor(seed.bank) %>% fct_rev()) %>% 
   
   #make time by day
   mutate(Time = 2 * Time) %>%
@@ -177,11 +171,7 @@ d%>%
   summarise(n = n(), m = mean(no.ml), v = sd(no.ml)/sqrt(n)) %>%
   
   #ajust factor order for seed bank
-  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
-                          seed.bank ==  "short" ~ "short seed bank",
-                          seed.bank ==  "none" ~ "no seed bank")) %>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+   mutate(seed.bank = as_factor(seed.bank) %>% fct_rev()) %>% 
   
   #make time by day
   mutate(Time = 2 * Time) %>%
@@ -223,11 +213,7 @@ d%>%
   summarise(n = n(), m = mean(cell.ml), v = sd(cell.ml)/sqrt(n)) %>%
   
   #ajust factor order for seed bank
-  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
-                          seed.bank ==  "short" ~ "short seed bank",
-                          seed.bank ==  "none" ~ "no seed bank")) %>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+   mutate(seed.bank = as_factor(seed.bank) %>% fct_rev()) %>% 
   
   #make time by day
   mutate(Time = 2 * Time) %>%
@@ -276,11 +262,7 @@ d1 <- d%>%
   summarise(n = n(), m = mean(no.ml), v = sd(no.ml)/sqrt(n)) %>%
   
   #ajust factor order for seed bank
-  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
-                          seed.bank ==  "short" ~ "short seed bank",
-                          seed.bank ==  "none" ~ "no seed bank")) %>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank","no seed bank")) %>%
+   mutate(seed.bank = as_factor(seed.bank) %>% fct_rev()) %>% 
   
    #ajust factor order for populations
   mutate(pop=as.factor(pop))%>%
@@ -338,10 +320,7 @@ d%>%
   summarise(n = n(), m = mean(perc.spore), v = sd(perc.spore)/sqrt(n)) %>%
   
   #ajust factor order for seed bank
-  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
-                          seed.bank ==  "short" ~ "short seed bank") )%>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank")) %>%
+   mutate(seed.bank = as_factor(seed.bank) %>% fct_rev()) %>% 
   
   #make time by day
   mutate(Time = 2 * Time) %>%
@@ -386,14 +365,7 @@ d%>%
   summarise(n = n(), m = mean(no.ml), v = sd(no.ml)/sqrt(n)) %>%
   
   #ajust factor order for seed bank
-  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
-                          seed.bank ==  "short" ~ "short seed bank")) %>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank")) %>%
-  
-  mutate (phage = if_else(phage == "no_Phage", "no phage", "with phage")) %>%
-    mutate(phage=as.factor(phage))%>%
-  mutate(phage = fct_relevel(phage, "with phage","no phage")) %>%
+   mutate(seed.bank = as_factor(seed.bank) %>% fct_rev()) %>% 
   
   #make time by day
   mutate(Time = 2 * Time) %>%
