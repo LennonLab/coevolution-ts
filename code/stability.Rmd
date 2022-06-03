@@ -33,6 +33,13 @@ Load organized data
 ```{r, echo=FALSE, message=FALSE}
 d <- read_csv(here("data","organized_pop_density.csv"), )
 
+# focus on long vs n seed bank
+d <- d %>% 
+  filter(seed.bank != "short") %>% 
+   mutate(seed.bank = 
+            if_else(host=="WT", "with-seed-bank", "no-seed-bank"))
+
+
 ```
 
 
@@ -77,10 +84,8 @@ cell.stab <-
     mutate(phage=case_when(grepl("O", flask) ~ "SPO1",
                            grepl("Ct", flask) ~ "no_Phage"))%>%
     
-    mutate(seed.bank=case_when(grepl("SN", flask) ~ "none",
-                                grepl("WS", flask) ~ "short",
-                                grepl("WL", flask) ~ "long"))%>%
-     mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+   mutate(seed.bank = 
+            if_else(host=="WT", "with-seed-bank", "no-seed-bank")) %>%  
     
     mutate(line=str_sub(flask, -2,-1))
 
@@ -186,9 +191,9 @@ cell.stab.win <-
     mutate(phage=case_when(grepl("O", flask) ~ "SPO1",
                            grepl("Ct", flask) ~ "no_Phage"))%>%
     
-    mutate(seed.bank=case_when(grepl("SN", flask) ~ "none",
-                                grepl("WS", flask) ~ "short",
-                                grepl("WL", flask) ~ "long")) %>%
+   mutate(seed.bank = 
+            if_else(host=="WT", "with-seed-bank", "no-seed-bank") %>% 
+             as_factor() %>% fct_rev()) %>% 
     
     mutate(line=str_sub(flask, -2,-1))
 
@@ -203,12 +208,10 @@ sum.cell.stab.win<-
   mutate(sem=sd/sqrt(n)) %>%
   
   #ajust factor order for seed bank
-  mutate (seed.bank = case_when(seed.bank == "long" ~ "long seed bank",
-                          seed.bank ==  "short" ~ "short seed bank",
-                          seed.bank ==  "none" ~ "no seed bank")) %>%
-  mutate(seed.bank=as.factor(seed.bank))%>%
-  mutate(seed.bank = fct_relevel(seed.bank, "long seed bank","short seed bank", "no seed bank")) %>%
-  
+   # mutate(seed.bank = 
+   #          if_else(host=="WT", "with-seed-bank", "no-seed-bank") %>% 
+   #           as_factor() %>% fct_rev()) %>% 
+
   mutate (phage = if_else(phage == "no_Phage", "no phage", "with phage")) %>%
     mutate(phage=as.factor(phage))%>%
   mutate(phage = fct_relevel(phage, "with phage","no phage"))
