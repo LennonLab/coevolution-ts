@@ -54,7 +54,10 @@ d <-
                          grepl("Ct", culture) ~ "no_Phage",
                          grepl("ANC", line) ~ "no_Phage"))%>%
   #seed bank
-  mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))%>%
+  filter(seed.bank != "short") %>% 
+   mutate(seed.bank = 
+            if_else(host=="WT", "with-seed-bank", "no-seed-bank") %>% 
+            as_factor() %>% fct_rev()) %>% 
   #add flask to be used as grouping variable
   mutate(flask=paste(culture,line, sep = "-"))%>%
   #remove setup data (prior to phage infection)
