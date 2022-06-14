@@ -342,23 +342,6 @@ d. Equal residual variance holds across experimental units (flasks).
 
 # post hoc  
 
-Phage effect alone
-```{r}
-emm_sb.p <-
-  stats::update(ref_grid(m.best), tran = make.tran("boxcox", param =  bx.cx$roundlam)) %>%
-  emmeans(pairwise ~  phage) 
-
-regrid(emm_sb.p$emmeans)
-
-contrast(regrid(emm_sb.p$emmeans), method = "pairwise")
-
-plot(regrid(emm_sb.p$emmeans))+
-  theme_cowplot()+
-  panel_border()+
-  scale_x_log10()
-
-
-```
 
 What in the phage X seed-bank interaction is causing a significant effect on population dynamics?  
 We analyze the *estimated marginal means (EMM)*, following examples from: https://cran.r-project.org/web/packages/emmeans/vignettes/interactions.html
@@ -366,11 +349,11 @@ We analyze the *estimated marginal means (EMM)*, following examples from: https:
 ### Visualize EMM of interactions
 ```{r}
 # plot 
-emmip(m.best, phage~seed.bank)+
+emmip(m.best, phage*seed.bank~time.fct)+
   theme_cowplot()
 ```
 
-Plot shows that the no-seed-bank in the presence of phage is likely the treatment interaction standing out. We compare seed banks treatments separately for phage treatments.
+Plot shows that the seed-bank treatment in the presence of phage is likely the treatment interaction standing out. We compare seed banks treatments separately for phage treatments.
 
 ```{r}
 emm_sb.ph <-
@@ -388,6 +371,7 @@ plot(regrid(emm_sb.ph$emmeans))+
 ```
 
 Indeed in the phage infected treatments we see that the populations differ between no-seed-bank and with-seed-bank treatments. The trend is that the absence of a seed-bank results in lower cell densities.  
+
 We also saw an interaction with time. We next compare the seed-bank treatments across time, separating the phage treatments, and focusing on the phage treated samples.
 
 ```{r}
