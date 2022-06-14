@@ -1,12 +1,8 @@
 ---
 title: "RM-ANOVA for coevolution with a seed bank"
-subtitle: "Total cell density"
+subtitle: "Percent Spores"
 output:
-  html_notebook:
-    code_folding: hide
   pdf_document: default
-editor_options:
-  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -27,9 +23,10 @@ library(cowplot)
 
 library(nlme)
 library(car)
-library(emmeans)
+# library(ggpubr)
 library(broom)
 library(broom.mixed)
+library(emmeans)
 
 # save the state of the project library to the lockfile (called renv.lock),
 # renv::snapshot()
@@ -57,7 +54,7 @@ d <-
   mutate(phage=as.factor(phage))%>%
   mutate(seed.bank=as.factor(seed.bank))%>%
   #ajust factor order for seed bank
-  mutate(seed.bank = fct_relevel(seed.bank, "long","short","none"))
+  mutate(seed.bank = fct_rev(seed.bank))
 ```
 
 Select response variable to be analyzed  
@@ -95,13 +92,14 @@ Using "Levene’s test" that according to website is the most commonly used test
 
 ```{r}
 # Levene's test with multiple independent variables
-car::leveneTest(response ~ phage*seed.bank*line, data = d)
+car::leveneTest(response ~ phage*line, data = d)
 ```
 
-The data does not fulfill the assumption of equal variance across test groups.
+**The data does not fulfill the assumption of equal variance across test groups.**
 
 
-## Log transform the data
+## Log transform the data  
+
 
 ```{r}
 d <- d%>%
@@ -124,31 +122,25 @@ ggplot(aes(x=Time, y=log.response))+
 
 ```{r}
 # Levene's test with multiple independent variables
-car::leveneTest(log.response ~ phage*seed.bank*line, data = d)
+car::leveneTest(log.response ~ phage*line, data = d)
 ```
 
-The data  fulfills the assumption of equal variance across test groups, at a borderline p-value.
+**The data still does not fulfill the assumption of equal variance across test groups.**
 
 
 # Box-Cox transformation
 
-`powerTransform` uses the maximum likelihood-like approach of Box and Cox (1964) to select a transformation of a univariate or multivariate response for normality, linearity and/or constant variance. (help page for `car::powerTransform`)
+>`powerTransform` uses the maximum likelihood-like approach of Box and Cox (1964) to select a transformation of a univariate or multivariate response for normality, linearity and/or constant variance.  
+>(help page for `car::powerTransform`)
+
 
 ```{r}
-# Multivariate transformation to normality within levels of 'htype'
-bx.cx <- powerTransform(response ~ phage*seed.bank*line, d)
+# Multivariate transformation to normality within levels of treatments
+bx.cx <- powerTransform(response ~ phage*line, d)
 summary(bx.cx)
 ```
-The null hypothesis of no transformation needed ($\lambda =1$) is **NOT** rejected and so we  proceed to **do the analysis on non transformed data**. 
 
-
-Plot the profile log-likelihood for Box-Cox transformations .  
-```{r}
-  with(d, boxCox(response ~ phage*seed.bank*line, 
-                 lambda = seq(-1, bx.cx$roundlam+3, by = 0.1),
-                 family="bcPower"))
-```
-
+*Tranformation is not required by Box-Cox test*
 
 
 # RM-ANOVA model selection
@@ -170,12 +162,9 @@ for(Q in c(0:2)){
     #skip corARMA(0,0)
     if (P==0 & Q==0) next
     
-    # corARMA(1,2) had singular convergence
-    if (P==1 & Q==2) next
-    
     #run model
     cur.model <- d%>%
-      lme(response ~ phage * seed.bank * time.fct , 
+      lme(response ~ phage * time.fct , 
           random = ~1|flask, 
           correlation = corARMA(form = ~ Time | flask, p=P,q=Q),
             data = .)
@@ -227,7 +216,7 @@ t.models%>%
 
 # best model is `r best`
 
-This model is significantly better than the other models.  
+Though it is not significantly better than mostof the other models.  
 
 **Results of selected model**
 
@@ -237,41 +226,45 @@ pq.aic%>%
   slice_min(AIC)
 #display best model results
   anova(m.best)
+
   
 ```
 
-The seed-bank treatment is found as a significant effect in interaction with time, and nearly significant in interaction with phage. phage and time both are significant effect as is their interaction. Before looking into the potential drivers of these effects we evaluate the model. 
+Phage and time both significantly effect spore fraction, as main effects and in their interaction. Before looking into the potential drivers of these effects we evaluate the model. 
 
 
-### How sensitive would the result be to model selected?  
+### How sensitive would the result be to model selected?
+
+looking at different correlation structures.
+
 ```{r}
 
-# putl all model results in tibble
+# all model results to tibble
 all.models <- 
   map(l.rm, anova.lme) %>%
   map(rownames_to_column)%>%
   bind_rows(.id = "arma")%>%
   rename(effect=rowname)
 
+
 arma.best <- paste0("ARMA_P",pq.aic$p[1],"Q",pq.aic$q[1])
 selected <- 
   all.models%>%
-  filter(arma==arma.best)
+  filter(arma==arma.best) 
 
 
 all.models%>%
   mutate(effect=fct_inorder(effect))%>%
   ggplot(aes(x=effect, y=`p-value`))+
-   geom_point(data = selected, color="black", size=10, shape="|")+
+  geom_point(data = selected, color="black", size=10, shape="|")+
   geom_hline(yintercept = c(0.05,0.01,1e-3), color="pink")+
   geom_jitter(aes(fill=effect),width = 0.2, height = 0,
               shape=21, size=2, show.legend = F)+
- 
   coord_flip()+
   theme_cowplot()
-```
 
-The line marks the p-values of the selected model, and the points show p-values of all models tested (including best). There is variance in p-values associated with seed bank treatment as main effect, in interaction with phage and in 3-way interaction. However the results lead to similar conclusions across the models, with the exception of phage X seed-bank interaction which hovers around the .05 significance threshold with some models yielding lower than threshold p-values.
+```
+The line marks the p-values of the selected model, and the points show p-values of all models tested (including best). All the models have the same results, even though the exact significance of the phage effect varies. 
 
 
 #### Distribution of model residuals
@@ -279,13 +272,14 @@ The line marks the p-values of the selected model, and the points show p-values 
 For the best model.
 
 ```{r,fig.height=10, fig.width=15}
+
 p1 <- 
-  #qqplot by seed bank
-  qqnorm(m.best,~ resid(., type = "p")|seed.bank, abline = c(0, 1))
+  #qqplot by phage
+  qqnorm(m.best,~ resid(., type = "p")|phage, abline = c(0, 1))
 
 p2 <-
-  # standardized residuals versus fitted values by seed.bank
-plot(m.best, resid(., type = "p") ~ fitted(.) | seed.bank, abline = 0)
+  # standardized residuals versus fitted values by phage
+plot(m.best, resid(., type = "p") ~ fitted(.) | phage, abline = 0)
 
 p3 <-
 broom.mixed::augment(m.best)%>%
@@ -311,35 +305,44 @@ plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
 ```
 
 conclusions:  
-a. model residuals are fairly close to normal distribution. Sign of good fit.  
+a. model residuals are very close to normal distribution. Sign of good fit.  
 b. The residuals are evenly distributed around 0, suggesting equal variance.  
-c. Equal residual variance holds across time, though some difference seen in long-no phage.  
-d. Equal residual variance holds across experimental units (flasks).
+c. Equal residual variance holds across time.  
+d. Equal residual variance holds across experimental units (flasks).  
+
+
 
 # post hoc  
-What in the time X seed-bank interaction is causing a significant effect on population dynamics?  
+
+
+What in the phage X time interaction is causing a significant effect on spore fraction dynamics?  
 We analyze the *estimated marginal means (EMM)*, following examples from: https://cran.r-project.org/web/packages/emmeans/vignettes/interactions.html
 
 ### Visualize EMM of interactions
 ```{r}
 # plot 
-emmip(m.best, time.fct~seed.bank)+
+emmip(m.best, phage~time.fct)+
   theme_cowplot()
 ```
 
-not clear from plot.
+An increase in percent of spores is seen for a short period in the phage infected cultures, an not in the absence of phage.
 
 
 ```{r}
 
-coevo.emm <- emmeans(m.best, ~  seed.bank * time.fct)
-coevo.pairs <- pairs(coevo.emm, simple="seed.bank")%>%
+coevo.emm <- emmeans(m.best, ~ phage * time.fct)
+
+coevo.pairs <- pairs(regrid(coevo.emm), simple="phage")%>%
   tidy
 
-p1 <- 
+p1 <-
   coevo.pairs%>%
+  # focus on phage infected
+  # filter(phage=="SPO1")%>%
   # make time continuous for plotting.
   mutate(day=as.numeric(time.fct))%>%
+  # # arrange panel order
+  # mutate(contrast=fct_relevel(contrast, "long - short", after = 0))%>%
   #plot
   ggplot(aes(x=day, y=estimate))+
     #add 0 line
@@ -353,10 +356,9 @@ p1 <-
 p2 <- coevo.pairs%>%
   # focus on phage infected
   # filter(phage=="SPO1")%>%
-  # # make time continuous for plotting.
+  # make time continuous for plotting.
   mutate(day=as.numeric(time.fct))%>%
-  # arrange panel order
-  mutate(contrast=fct_relevel(contrast, "long - short", after = 0))%>%
+  
   #plot
   ggplot(aes(x=day, y=p.value))+
     #add 0.05 signifcance thrshold
@@ -365,96 +367,20 @@ p2 <- coevo.pairs%>%
   geom_line()+
   facet_grid(contrast~.)+
   theme_cowplot()+
-  panel_border()
+  panel_border()+
+  scale_y_log10()+
+  annotation_logticks(sides = "l")
 
 
 
-plot_grid(p1,p2, labels = "auto") 
+plot_grid(p1,p2, labels = "auto")
 ```
 
-There are a few points that show significant difference between seed-bank treatments, but they are sporadically dispersed and are associated with different directions of change: three have higher spore percentage in short and 1 in long.
+For a few days (days 16-18) the phage infected cultures have significantly greater fraction of spores.
 
-What about phage interaction with seed-bank?
-
-```{r}
-emm_sb.ph <- emmeans(m.best, pairwise ~ seed.bank | phage)
-
-emm_sb.ph$contrasts
-
-plot(emm_sb.ph)+
-  theme_cowplot()+
-  panel_border()
-
-emmip(m.best, phage~seed.bank)+
-  theme_cowplot()
-```
-
-The percentage of spores is higher in short seed bank treatment when infected by phage.
-
-What is the trend over time?
-```{r}
-
-coevo.emm <- emmeans(m.best, ~ phage * time.fct)
-coevo.pairs <- coevo.emm%>%
-  tidy()
-
-p1 <- 
-  coevo.pairs%>%
-  # make time continuous for plotting.
-  mutate(day=as.numeric(time.fct))%>%
-  #plot
-  ggplot(aes(x=day, y=estimate))+
-    #add trendline
-  geom_smooth(method = "lm")+
-  geom_point()+
-  geom_line()+
-  facet_grid(phage~.)+
-  theme_cowplot()+
-  panel_border()
-
-p2 <- coevo.pairs%>%
-  # make time continuous for plotting.
-  mutate(day=as.numeric(time.fct))%>%
-  #plot
-  ggplot(aes(x=day, y=p.value))+
-    #add 0.05 signifcance thrshold
-  geom_hline(yintercept = 0.05, color="red")+
-  geom_point()+
-  geom_line()+
-  facet_grid(phage~.)+
-  theme_cowplot()+
-  panel_border()
-
-
-
-plot_grid(p1,p2, labels = "auto") 
-```
-A slight increase in percent of spores is seen in the phage infected cultures, an not in the absence of phage.
-
-`Is there a way to estimate if this increase is significant`
-
-```{r}
-cor.phage <- coevo.pairs%>%
-  # make time continuous 
-  mutate(day=as.numeric(time.fct))%>%
-  # phage infected only
-  filter(phage == "SPO1") %>%
-  select(day,estimate)
-
-  #test correlation
-  cor.test(x=cor.phage$day, y=cor.phage$estimate, method = "pearson")
-  
-cor.nophage <- coevo.pairs%>%
-  # make time continuous 
-  mutate(day=as.numeric(time.fct))%>%
-  # phage infected only
-  filter(phage == "no_Phage") %>%
-  select(day,estimate)
-
-  #test correlation
-  cor.test(x=cor.nophage$day, y=cor.nophage$estimate, method = "pearson")
-```
 
 
 
 # Summary
+
+??
