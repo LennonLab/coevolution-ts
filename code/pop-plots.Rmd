@@ -324,13 +324,13 @@ d%>%
   
   #make time by day
   mutate(Time = 2 * Time) %>%
-    filter(Time %% 2 ==0) %>%
+    # filter(Time %% 2 ==0) %>%
 
 ggplot(aes(x=Time, y = m))+
   geom_line(aes(color=pop))+
   geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
   geom_point(aes(shape=pop, fill= pop), size = 1.5)+
-  facet_wrap(~seed.bank)+
+  # facet_wrap(~seed.bank)+
       theme_cowplot()+
       panel_border(color = "black", size = 1.5)+
   # scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
@@ -355,7 +355,7 @@ ggplot(aes(x=Time, y = m))+
 ```{r}
 d%>%
   
-  filter(host == "WT") %>%
+  filter(phage == "SPO1") %>%
   select( -phage.ml , -cell.ml) %>%
   pivot_longer(cols = c(spore.ml, veg.ml), names_to = "pop", values_to = "no.ml") %>%
   mutate (pop = if_else(pop == "spore.ml", "spore", "vegetative")) %>%
@@ -369,12 +369,13 @@ d%>%
   
   #make time by day
   mutate(Time = 2 * Time) %>%
+   # filter(Time %% 2 ==0) %>%
 
 ggplot(aes(x=Time, y = m))+
   geom_line(aes(color=pop))+
   geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
   geom_point(aes(shape=pop, fill= pop), size = 1.5)+
-  facet_grid(seed.bank ~ phage)+
+  facet_wrap(~ seed.bank )+
       theme_cowplot()+
       panel_border(color = "black", size = 1.5)+
   scale_y_log10(
@@ -389,6 +390,7 @@ ggplot(aes(x=Time, y = m))+
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
   xlab("Time (day)")+
+  coord_cartesian(ylim = c(5e4, NA))+
   ggsave(here("plots","pop-dynamics-spore.png"), width = 7, height = 4)
 
 
