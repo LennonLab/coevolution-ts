@@ -425,6 +425,26 @@ plot_grid(p1,p2, labels = "auto")
 
 The "absence of seed bank" effect on population density is seen in days 4-12 of the experiment. In that period a significant reduction in cell density is seen. However after that time the effect of no-seed-bank is lost, until the last samples where as a trend, the population density is becoming lower in absence of seed bank and that hits  the significance threshold on the last sample day. 
 
+### Phage effect alone
+
+In the paper I want to describe the overall effect of phage on host population density
+
+```{r}
+emm_sb.p <-
+  stats::update(ref_grid(m.best), tran = make.tran("boxcox", param =  bx.cx$roundlam)) %>%
+  emmeans(pairwise ~  phage) 
+
+regrid(emm_sb.p$emmeans)
+
+contrast(regrid(emm_sb.p$emmeans), method = "pairwise")
+
+ plot(regrid(emm_sb.p$emmeans))+
+   panel_border()+
+   panel_border()+
+   scale_x_log10()
+
+```
+
 # Summary
 
 The seed bank treatment alters population dynamics (cell density over time) in phage infected cultures only. Populations coevolving with phages in the absence of seed bank show a significant reduction in cell densities, most notably in the short to medium time frame. This is to say that the presence of a seed bank acts as a buffer that moderates the reduction in host population density caused by phage infection. The results suggest however that other mechanisms (presumably host evolution) can eventually enable the host to achieve the same resilience against phage-induced decimation of its population , but these may be less stable in the long run. 
