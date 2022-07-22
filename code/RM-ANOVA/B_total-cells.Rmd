@@ -452,7 +452,7 @@ emm_sb.ph <-
   stats::update(ref_grid(m.best), tran = make.tran("boxcox", param =  bx.cx$roundlam)) %>%
   emmeans(pairwise ~ phage | seed.bank ) 
 
-# contrast(regrid(emm_sb.ph$emmeans), method = "pairwise")
+contrast(regrid(emm_sb.ph$emmeans), method = "pairwise")
 
 plot(regrid(emm_sb.ph$emmeans))+
   theme_classic()+
