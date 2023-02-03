@@ -37,7 +37,7 @@ d <- read_csv(here("data","organized_pop_density.csv"), )
 d <- d %>% 
   filter(seed.bank != "short") %>% 
    mutate(seed.bank = 
-            if_else(host=="WT", "with-seed-bank", "no-seed-bank"))
+            if_else(host=="WT", "+seed bank", "-seed bank"))
 
 
 ```
@@ -85,7 +85,7 @@ cell.stab <-
                            grepl("Ct", flask) ~ "no_Phage"))%>%
     
    mutate(seed.bank = 
-            if_else(host=="WT", "with-seed-bank", "no-seed-bank")) %>%  
+            if_else(host=="WT", "+seed bank", "-seed bank")) %>%  
     
     mutate(line=str_sub(flask, -2,-1))
 
@@ -192,7 +192,7 @@ cell.stab.win <-
                            grepl("Ct", flask) ~ "no_Phage"))%>%
     
    mutate(seed.bank = 
-            if_else(host=="WT", "with-seed-bank", "no-seed-bank") %>% 
+            if_else(host=="WT", "+seed bank", "-seed bank") %>% 
              as_factor() %>% fct_rev()) %>% 
     
     mutate(line=str_sub(flask, -2,-1))
@@ -209,12 +209,12 @@ sum.cell.stab.win<-
   
   #ajust factor order for seed bank
    # mutate(seed.bank = 
-   #          if_else(host=="WT", "with-seed-bank", "no-seed-bank") %>% 
+   #          if_else(host=="WT", "+seed bank", "-seed bank") %>% 
    #           as_factor() %>% fct_rev()) %>% 
 
-  mutate (phage = if_else(phage == "no_Phage", "no phage", "with phage")) %>%
+  mutate (phage = if_else(phage == "no_Phage", "-phage", "+phage")) %>%
     mutate(phage=as.factor(phage))%>%
-  mutate(phage = fct_relevel(phage, "with phage","no phage"))
+  mutate(phage = fct_relevel(phage, "+phage","-phage"))
 
     
     
@@ -238,8 +238,12 @@ ggplot(aes(x=Time, y = stability, color = seed.bank))+
             strip.text = element_text(face = "bold"))+
   ylab("Stability")+
   xlab("Time (day)")+
-  labs(caption = paste0("stability = mean/SD\nCalculated from log transformed cell abundance data with sliding window of ",win.size, " days" ))+
-  ggsave(here("plots", "stability-window.png"), width = 8, height = 5)
+  labs(caption = paste0("stability = mean/SD\nCalculated from log transformed cell abundance data with sliding window of ",win.size, " days" )) -> p
+
+  ggsave(here("plots", "stability-window.png"), p,
+         width = 8, height = 5, bg = "white")
+  
+  p
 
 ```
 

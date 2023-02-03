@@ -74,7 +74,7 @@ d%>%
 
 ggplot(aes(x=Time, y = m))+
   geom_line(aes(color=pop))+
-  geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
+  geom_linerange(aes(ymin = m-v, ymax = m+v), linewidth = 0.5)+
   geom_point(aes(shape=pop, fill= pop), size = 1.5)+
   facet_wrap(~seed.bank)+
       theme_cowplot(font_size = 16)+
@@ -92,8 +92,9 @@ ggplot(aes(x=Time, y = m))+
   ylab("Abundance (per mL)")+
   xlab("Time (day)") -> p
 
-  ggsave(here("plots","pop-dynamics.png"),p, width = 7, height = 4, bg = "white")
-
+  ggsave(here("plots","pop-dynamics.png"),p, 
+         width = 7, height = 4, bg = "white")
+p
 
 ```
 
@@ -133,7 +134,7 @@ d%>%
 ggplot(aes(x=Time, y = m))+
   geom_line(data = d.bg, aes(y = no.ml, group = interaction(line,pop)), color = "grey")+
   geom_line(aes(color=pop))+
-  geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
+  geom_linerange(aes(ymin = m-v, ymax = m+v), linewidth = 0.5)+
   geom_point(aes(shape=pop, fill= pop), size = 1.5)+
   facet_wrap(~seed.bank)+
       theme_cowplot()+
@@ -150,8 +151,9 @@ ggplot(aes(x=Time, y = m))+
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
   xlab("Time (day)") ->p
-  ggsave(here("plots","pop-dynamics-bg.png"),p, width = 7, height = 4, bg = "white")
-
+  ggsave(here("plots","pop-dynamics-bg.png"),p, 
+         width = 7, height = 4, bg = "white")
+p
 
 ```
 
@@ -196,9 +198,11 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)")+
-  ggsave(here("plots","pop-dynamics-uninfected.png"), width = 7, height = 4)
-
+  xlab("Time (day)") -> p
+  ggsave(here("plots","pop-dynamics-uninfected.png"),p,
+         width = 7, height = 4, bg = "white")
+  
+  p
 
 ```
 
@@ -207,7 +211,7 @@ ggplot(aes(x=Time, y = m))+
 d%>%
   
   select(-spore.ml, -veg.ml, -phage.ml ) %>%
-  mutate (pop = if_else(phage == "SPO1", "with phage","no phage")) %>%
+  mutate (pop = if_else(phage == "SPO1", "+phage","-phage")) %>%
 
   # summarize across replicate lines  
   group_by(seed.bank, Time, pop ) %>%
@@ -237,8 +241,11 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)")+
-  ggsave(here("plots","pop-dynamics-hosts.png"), width = 7, height = 4)
+  xlab("Time (day)") -> p
+  ggsave(here("plots","pop-dynamics-hosts.png"),p, 
+         width = 7, height = 4, bg = "white")
+  
+  p
 
 
 ```
@@ -314,7 +321,7 @@ d%>%
   filter(host == "WT") %>%
   mutate(perc.spore = spore.ml * 100 /cell.ml)%>%
   select(-spore.ml, -veg.ml, -phage.ml, -cell.ml ) %>%
-  mutate (pop = if_else(phage == "SPO1", "with phage","no phage")) %>%
+  mutate (pop = if_else(phage == "SPO1", "+phage","-phage")) %>%
 
   # summarize across replicate lines  
   group_by(seed.bank, Time, pop ) %>%
@@ -346,8 +353,11 @@ ggplot(aes(x=Time, y = m))+
             strip.text = element_text(face = "bold"))+
   ylab("Spores (%)")+
   xlab("Time (day)")+
-  ylim(0,100)+
-  ggsave(here("plots","pop-dynamics-spores.png"), width = 5, height = 4)
+  ylim(0,100) -> p
+  ggsave(here("plots","pop-dynamics-spores.png"), p,
+         width = 5, height = 4, bg = "white")
+  
+  p
 
 
 ```
@@ -391,9 +401,11 @@ ggplot(aes(x=Time, y = m))+
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
   xlab("Time (day)")+
-  coord_cartesian(ylim = c(5e4, NA))+
-  ggsave(here("plots","pop-dynamics-spore.png"), width = 7, height = 4)
+  coord_cartesian(ylim = c(5e4, NA)) -> p
+  ggsave(here("plots","pop-dynamics-spore.png"),p,
+         width = 7, height = 4, bg = "white")
 
+  p
 
 ```
 
