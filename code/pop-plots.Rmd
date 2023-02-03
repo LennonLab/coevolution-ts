@@ -47,7 +47,7 @@ d <- read_csv(here("data","organized_pop_density.csv"), )
 d <- d %>% 
   filter(seed.bank != "short") %>% 
    mutate(seed.bank = 
-            if_else(host=="WT", "with-seed-bank", "no-seed-bank"))
+            if_else(host=="WT", "+seed bank", "-seed bank"))
 
 ```
 
@@ -77,7 +77,7 @@ ggplot(aes(x=Time, y = m))+
   geom_linerange(aes(ymin = m-v, ymax = m+v), size = 0.5)+
   geom_point(aes(shape=pop, fill= pop), size = 1.5)+
   facet_wrap(~seed.bank)+
-      theme_cowplot()+
+      theme_cowplot(font_size = 16)+
       panel_border(color = "black", size = 1.5)+
   scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
               labels = trans_format("log10", math_format(10^.x))) +
@@ -85,13 +85,14 @@ ggplot(aes(x=Time, y = m))+
   scale_shape_manual(values = c(21,22), guide = guide_legend(reverse = TRUE))+
   scale_color_manual(values = c("black","black"), guide = guide_legend(reverse = TRUE))+
   scale_fill_manual(values = c("white", "black"), guide = guide_legend(reverse = TRUE))+
-      theme(legend.position = c(.86, .1),
+      theme(legend.position = c(.83, .12),
             legend.title = element_blank(),
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)")+
-  ggsave(here("plots","pop-dynamics.png"), width = 7, height = 4)
+  xlab("Time (day)") -> p
+
+  ggsave(here("plots","pop-dynamics.png"),p, width = 7, height = 4, bg = "white")
 
 
 ```
@@ -148,8 +149,8 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)")+
-  ggsave(here("plots","pop-dynamics-bg.png"), width = 7, height = 4)
+  xlab("Time (day)") ->p
+  ggsave(here("plots","pop-dynamics-bg.png"),p, width = 7, height = 4, bg = "white")
 
 
 ```
