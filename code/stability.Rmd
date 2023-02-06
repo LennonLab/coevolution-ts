@@ -9,7 +9,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-library(renv)
+# library(renv)
 # #install to project library the required packages
 # renv::restore()
 # # Initialize lock file when first setting repo
@@ -37,7 +37,7 @@ d <- read_csv(here("data","organized_pop_density.csv"), )
 d <- d %>% 
   filter(seed.bank != "short") %>% 
    mutate(seed.bank = 
-            if_else(host=="WT", "with-seed-bank", "no-seed-bank"))
+            if_else(host=="WT", "+seed bank", "-seed bank"))
 
 
 ```
@@ -85,7 +85,7 @@ cell.stab <-
                            grepl("Ct", flask) ~ "no_Phage"))%>%
     
    mutate(seed.bank = 
-            if_else(host=="WT", "with-seed-bank", "no-seed-bank")) %>%  
+            if_else(host=="WT", "+seed bank", "-seed bank")) %>%  
     
     mutate(line=str_sub(flask, -2,-1))
 
@@ -154,7 +154,11 @@ contrast(res.emm, method = "pairwise")
 plot(res.emm)+theme_bw()
 ```
 
-
+```{r}
+res.emm <- emmeans(aov_stab, c("seed.bank", "phage"))
+contrast(res.emm,by="phage", method = "pairwise")
+contrast(res.emm,by="seed.bank", method = "pairwise")
+```
 
 
 # stability over time
@@ -192,7 +196,7 @@ cell.stab.win <-
                            grepl("Ct", flask) ~ "no_Phage"))%>%
     
    mutate(seed.bank = 
-            if_else(host=="WT", "with-seed-bank", "no-seed-bank") %>% 
+            if_else(host=="WT", "+seed bank", "-seed bank") %>% 
              as_factor() %>% fct_rev()) %>% 
     
     mutate(line=str_sub(flask, -2,-1))
@@ -209,12 +213,12 @@ sum.cell.stab.win<-
   
   #ajust factor order for seed bank
    # mutate(seed.bank = 
-   #          if_else(host=="WT", "with-seed-bank", "no-seed-bank") %>% 
+   #          if_else(host=="WT", "+seed bank", "-seed bank") %>% 
    #           as_factor() %>% fct_rev()) %>% 
 
-  mutate (phage = if_else(phage == "no_Phage", "no phage", "with phage")) %>%
+  mutate (phage = if_else(phage == "no_Phage", "-phage", "+phage")) %>%
     mutate(phage=as.factor(phage))%>%
-  mutate(phage = fct_relevel(phage, "with phage","no phage"))
+  mutate(phage = fct_relevel(phage, "+phage","-phage"))
 
     
     
@@ -236,10 +240,122 @@ ggplot(aes(x=Time, y = stability, color = seed.bank))+
             legend.title = element_blank(),
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
-  ylab("Stability")+
-  xlab("Time (day)")+
-  labs(caption = paste0("stability = mean/SD\nCalculated from log transformed cell abundance data with sliding window of ",win.size, " days" ))+
-  ggsave(here("plots", "stability-window.png"), width = 8, height = 5)
+  ylab("Stability") +
+  xlab("Time (days)")-> p
+  # xlab("Time (day)")+
+  # labs(caption = paste0("stability = mean/SD\nCalculated from log transformed cell abundance data with sliding window of ",win.size, " days" )) 
+
+  # ggsave(here("plots", "stability-window.png"), p,
+         # width = 8, height = 5, bg = "white")
+  p
+
+```
+
+Is there statistical support for seed bank stability over time?
+
+```{r stabilityXtime stats}
+aov_stab_time <- 
+  aov(stability~seed.bank*phage*Time, 
+      data = cell.stab.win)
+    # data = filter(cell.stab, phage=="SPO1"))
+  
+summary(aov_stab_time)
+# plot(aov_stab)
+```
+
+Yes, there is! Post-hoc:
+```{r}
+library(emmeans)
+
+res.emm <- emmeans(aov_stab_time, c("seed.bank", "phage"))
+res.emm
+plot(res.emm)+theme_bw()
+```
+```{r}
+contrast(res.emm,by="phage", method = "pairwise")
+```
+```{r}
+contrast(res.emm,by="phage", method = "pairwise", at = list(Time = 3:25))
+```
+
+```{r}
+res.emm <- emmeans(aov_stab_time, c("seed.bank", "phage", "Time"),at = list(Time = 3:25))
+
+p.emm <-  broom::tidy(res.emm) %>% 
+   mutate(phage = if_else(phage=="SPO1", "+phage", "-phage")) %>% 
+ggplot(aes(x=Time, y = estimate, color = seed.bank))+
+  geom_line()+
+  geom_linerange(aes(ymin = estimate-std.error, ymax = estimate+std.error),
+                 size = 0.5, show.legend = FALSE)+
+  geom_point(aes(shape=seed.bank, fill= seed.bank), size = 1.5)+
+   ylab("Stability (emmeans)")+
+  facet_wrap( ~ phage %>% fct_rev())+
+      theme_cowplot()+
+      panel_border(color = "black", size = 1.5)+
+  scale_x_continuous(breaks = c(0,7,14,21,28), limits = c(0,28))+
+  scale_shape_manual(values = c(21,22,24))+
+  scale_color_viridis_d()+
+  scale_fill_viridis_d()+
+      theme(legend.position = c(.75, .12),
+            legend.title = element_blank(),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"))
+
+p.emm
+```
+<!-- Combine plots -->
+```{r}
+
+
+  # ggsave(here("plots", "stability-window-new.png"), 
+  #        plot_grid(p, p.emm, labels = c("(a)", "(b)"), ncol = 1),
+  #         width = 6, height = 6, bg = "white")
+
+```
+
+
+```{r}
+coevo.pairs <- contrast(res.emm,by="Time", method = "pairwise")%>%
+  broom::tidy()
+
+
+p.pval <- coevo.pairs %>% 
+  filter(contrast %in% c("(-seed bank no_Phage) - (+seed bank no_Phage)",
+                         "(-seed bank SPO1) - (+seed bank SPO1)")) %>% 
+  mutate(phage = if_else(str_detect(contrast, "SPO1"), "+phage", "-phage") %>% fct_rev()) %>% 
+  mutate(seed.bank = "-seed bank VS +seed bank") %>% 
+  # mutate(contrast = str_replace_all(contrast, "SPO1", "+phage")) %>% 
+  # mutate(contrast = str_replace_all(contrast, "no_Phage", "-phage")) %>% 
+  #  mutate(contrast = str_replace(contrast, "\\) - \\(", "\nVS\n")) %>% 
+  # mutate(contrast = str_remove_all(contrast, "\\(")) %>% 
+  #   mutate(contrast = str_remove_all(contrast, "\\)")) %>% 
+  ggplot(aes(Time, -log10(adj.p.value)))+
+  geom_hline(yintercept = -log10(0.05), color = "red")+
+  geom_line()+ 
+  geom_point(shape = 21, size=2, fill = "white")+
+  geom_text(x = 0, y = -.8,label = expression("adj. "*italic(P)*" = 0.05"),color = "red", hjust =0)+
+  facet_wrap(phage~seed.bank )+
+  scale_y_reverse()+
+  scale_x_continuous(breaks = c(0,7,14,21,28), limits = c(0,28))+
+  theme_cowplot()+
+  panel_border(color = "black", size = 1.5)+
+  panel_border(color = "black")+
+  ylab(expression("-log"[10]*" adjusted "*italic(P)*" value"))+
+  xlab("Time (days)")+
+        theme(legend.title = element_blank(),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"))
+  
+p.pval
+```
+
+Combine plots
+```{r}
+
+
+  ggsave(here("plots", "stability-window-new.png"),
+         plot_grid(p, p.pval, labels = c("(a)", "(b)"), ncol = 1),
+          width = 6, height = 6, bg = "white")
 
 ```
 

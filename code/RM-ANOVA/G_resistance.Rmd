@@ -1,0 +1,296 @@
+---
+title: "RM-ANOVA for coevolution with a seed bank"
+subtitle: "phenotypic evolution"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+library(renv)
+# #install to project library the required packages
+# renv::restore()
+# # Initialize lock file when first setting repo
+# renv::init()
+
+library(here)
+# # set root at project file ("coevolution-ts"). 
+# # Done once at initial setup.
+# here::set_here()
+
+library(tidyverse)
+library(cowplot)
+
+
+library(nlme)
+library(car)
+# library(ggpubr)
+library(broom)
+library(broom.mixed)
+library(emmeans)
+
+# save the state of the project library to the lockfile (called renv.lock),
+# renv::snapshot()
+
+```
+
+Load organized data  
+```{r, echo=FALSE, message=FALSE}
+d <- read_csv(here("data","resistance-pop-sum.csv"), )
+
+```
+
+### Adjusting variable types for lme
+
+In the lme models used below the fixed effects need to be specified as factors. In this experiment these are: *seed.bank and time*. However for the auto correlation specification time needs to be specified as an integer. 
+
+```{r}
+d <- 
+  d%>%
+  rename(Time = t.host) %>% 
+  # for the lme model all fixed effects need to be factors
+  mutate(time.fct=as.factor(Time))%>%
+  mutate(pop=as.factor(pop))%>%
+  mutate(seed.bank=as.factor(seed.bank))%>%
+  #ajust factor order for seed bank
+  mutate(seed.bank = fct_rev(seed.bank))
+```
+
+Select response variable to be analyzed  
+
+```{r}
+var.response <- "pop_resistance" 
+
+d <- d %>%
+  mutate(response=pop_resistance ) %>% 
+  mutate(flask = paste0(trt,"-", line)) 
+```
+
+Here we analyze **`r var.response` **.
+
+```{r}
+d%>%
+ggplot(aes(x=Time, y=response))+
+      geom_line(aes(group=flask,color=line), size=1, alpha=0.7)+
+        facet_wrap(seed.bank~pop)+
+      theme_bw()+
+      panel_border()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab(var.response)+
+  ylim(0,NA)
+
+
+```
+
+
+### Test data for homogeneity of variances
+
+This is an assumption of ANOVA tests.
+
+Based on : https://www.datanovia.com/en/lessons/homogeneity-of-variance-test-in-r/
+Using "Levene’s test" that according to website is the most commonly used test for this purpose. This test has a null hypothesis of equal variance. So getting P>0.05 suggests homogenic variance.  
+
+```{r}
+# Levene's test with multiple independent variables
+car::leveneTest(response ~ pop*seed.bank*line, data = d)
+```
+
+**The data does not fulfill the assumption of equal variance across test groups.**
+
+
+## Log transform the data  
+
+Making it percent so that values remain positive
+
+```{r}
+d <- d%>%
+  mutate(log.response=log10(100*response))
+
+d%>%
+ggplot(aes(x=Time, y=log.response,group=flask))+
+      geom_line(aes(group=flask,color=line), size=1, alpha=0.7)+
+        facet_wrap(seed.bank~pop)+
+      theme_bw()+
+      panel_border()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab(paste(var.response,"(log10)"))
+
+
+```
+
+
+### Test transformed data for homogeneity of variances
+
+```{r}
+# Levene's test with multiple independent variables
+car::leveneTest(log.response ~ pop * seed.bank * line, data = d)
+```
+
+**The data still does not fulfill the assumption of equal variance across test groups.**
+
+
+# Box-Cox transformation
+
+>`powerTransform` uses the maximum likelihood-like approach of Box and Cox (1964) to select a transformation of a univariate or multivariate response for normality, linearity and/or constant variance.  
+>(help page for `car::powerTransform`)
+
+
+```{r}
+# Multivariate transformation to normality within levels of treatments
+bx.cx <- powerTransform(response ~ pop*seed.bank*line, d)
+summary(bx.cx)
+```
+
+*Tranformation is required, but not a simple log transformation*
+
+Plot the profile log-likelihood for Box-Cox transformations.  
+```{r}
+  with(d, boxCox(response ~ pop*seed.bank*line, 
+                 lambda = seq(-1, bx.cx$roundlam+3, by = 0.1),
+                 family="bcPower"))
+```
+
+Transform using Box-Cox $\lambda$ (rounded). 
+```{r}
+d <- d%>%
+  mutate(bxcx.response=bcPower(response, bx.cx$roundlam))
+
+d%>%
+ggplot(aes(x=Time, y=bxcx.response))+
+      geom_line(aes(group=flask,color=line), size=1, alpha=0.7)+
+        facet_wrap(pop~ seed.bank)+
+      theme_bw()+
+      panel_border()+
+      theme(legend.position = "bottom",
+            text=element_text(size=14))+
+      ylab(paste(var.response,"(Box-Cox transformed)"))
+
+
+
+```
+
+### Test transformed data for homogeneity of variances
+
+```{r}
+# Levene's test with multiple independent variables
+car::leveneTest(bxcx.response ~ pop*seed.bank*line, data = d)
+```
+
+**The data now fulfills the assumption of equal variance across test groups.**
+
+#RM-ANOVA
+
+##  vs. Spores in "with-seed-bank" populations
+
+```{r}
+
+cur.model <- d%>%
+      # compare veg and spore in with-seed-bank
+      filter(seed.bank == "with-seed-bank") %>% 
+      lme(bxcx.response ~ pop * time.fct , 
+          random = ~1|flask ,
+          correlation=corARMA(form = ~ 1 | flask,  p = 1, q = 1),
+            data = .)
+
+
+anova(cur.model)
+```
+
+### Distribution of model residuals
+
+Is the model any good?
+
+
+```{r,fig.height=10, fig.width=15}
+
+p1 <- 
+  #qqplot by seed bank
+  qqnorm(cur.model,~ resid(., type = "p")|pop, abline = c(0, 1))
+
+p2 <-
+  # standardized residuals versus fitted values by seed.bank
+plot(cur.model, resid(., type = "p") ~ fitted(.) | pop, abline = 0)
+
+p3 <-
+broom.mixed::augment(cur.model)%>%
+  ggplot(aes(Time,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_line(aes(color=line))+
+  facet_wrap(~pop)+
+  theme_cowplot()+panel_border()
+
+p4 <-
+broom.mixed::augment(cur.model)%>%
+  ggplot(aes(line,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+
+  geom_point(aes(color=line), position = position_dodge(width = .9), shape=21)+
+  facet_wrap(~pop)+
+  theme_cowplot()+panel_border()
+
+
+
+plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
+
+```
+
+ok (L3 not great...)
+
+
+## Seed-bank effect on veg populations
+
+```{r}
+cur.model <- d%>%
+      # compare veg and spore in with-seed-bank
+      filter(pop == "VEG") %>% 
+      lme(response ~ seed.bank * time.fct , 
+          random = ~1|flask ,
+          correlation=corARMA(form = ~ 1 | flask, p=1, q=1),
+            data = .)
+
+anova(cur.model)
+```
+
+
+
+### Distribution of model residuals
+
+Is the model any good?
+  
+
+```{r,fig.height=10, fig.width=15}
+
+p1 <- 
+  #qqplot by seed bank
+  qqnorm(cur.model,~ resid(., type = "p")|seed.bank, abline = c(0, 1))
+
+p2 <-
+  # standardized residuals versus fitted values by seed.bank
+plot(cur.model, resid(., type = "p") ~ fitted(.) | seed.bank, abline = 0)
+
+p3 <-
+broom.mixed::augment(cur.model)%>%
+  ggplot(aes(Time,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_line(aes(color=line))+
+  facet_wrap(~seed.bank)+
+  theme_cowplot()+panel_border()
+
+p4 <-
+broom.mixed::augment(cur.model)%>%
+  ggplot(aes(pop,.resid)) +
+  geom_hline(yintercept = 0)+
+  geom_boxplot(aes(fill=line),alpha=.5, position = position_dodge(width = .9))+
+  geom_point(aes(color=line), position = position_dodge(width = .9), shape=21)+
+  facet_wrap(~seed.bank)+
+  theme_cowplot()+panel_border()
+
+
+
+plot_grid(p1,p2,p3,p4, nrow = 2, labels = 'auto')
+
+```
+
+
+ok
