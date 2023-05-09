@@ -1,9 +1,11 @@
 ---
 title: "population plots for coevolution with a seed bank"
 output:
-  pdf_document: default
+  html_document:
+    df_print: paged
   html_notebook:
     code_folding: hide
+  pdf_document: default
 editor_options:
   chunk_output_type: inline
 ---
@@ -90,7 +92,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)") -> p
+  xlab("Time (days)") -> p
 
   ggsave(here("plots","pop-dynamics.png"),p, 
          width = 7, height = 4, bg = "white")
@@ -150,7 +152,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)") ->p
+  xlab("Time (days)") ->p
   ggsave(here("plots","pop-dynamics-bg.png"),p, 
          width = 7, height = 4, bg = "white")
 p
@@ -198,7 +200,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)") -> p
+  xlab("Time (days)") -> p
   ggsave(here("plots","pop-dynamics-uninfected.png"),p,
          width = 7, height = 4, bg = "white")
   
@@ -241,7 +243,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)") -> p
+  xlab("Time (days)") -> p
   ggsave(here("plots","pop-dynamics-hosts.png"),p, 
          width = 7, height = 4, bg = "white")
   
@@ -307,7 +309,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)")
+  xlab("Time (days)")
 
 
 ```
@@ -352,7 +354,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Spores (%)")+
-  xlab("Time (day)")+
+  xlab("Time (days)")+
   ylim(0,100) -> p
   ggsave(here("plots","pop-dynamics-spores.png"), p,
          width = 5, height = 4, bg = "white")
@@ -400,7 +402,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)")+
+  xlab("Time (days)")+
   coord_cartesian(ylim = c(5e4, NA)) -> p
   ggsave(here("plots","pop-dynamics-spore.png"),p,
          width = 7, height = 4, bg = "white")
@@ -462,7 +464,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)")+
+  xlab("Time (days)")+
   coord_cartesian(ylim = c(5e4, NA)) -> p
   ggsave(here("plots","pop-dynamics-spore-ALL.png"),p,
          width = 7, height = 4, bg = "white")
