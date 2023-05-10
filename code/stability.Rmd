@@ -340,7 +340,7 @@ p.pval <- coevo.pairs %>%
   theme_cowplot()+
   panel_border(color = "black", size = 1.5)+
   panel_border(color = "black")+
-  ylab(expression("-log"[10]*" adjusted "*italic(P)*" value"))+
+  ylab(expression("-log"[10]*" adjusted "*italic(p)*" value"))+
   xlab("Time (days)")+
         theme(legend.title = element_blank(),
             strip.background = element_blank(),
@@ -354,7 +354,7 @@ Combine plots
 
 
   ggsave(here("plots", "stability-window-new.png"),
-         plot_grid(p, p.pval, labels = c("(a)", "(b)"), ncol = 1),
+         plot_grid(p, p.pval, labels = c("a", "b"), ncol = 1),
           width = 6, height = 6, bg = "white")
 
 ```

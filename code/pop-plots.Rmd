@@ -1,15 +1,17 @@
 ---
 title: "population plots for coevolution with a seed bank"
 output:
-  pdf_document: default
+  html_document:
+    df_print: paged
   html_notebook:
     code_folding: hide
+  pdf_document: default
 editor_options:
   chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
-library(renv)
+# library(renv)
 # #install to project library the required packages
 # renv::restore()
 # # Initialize lock file when first setting repo
@@ -90,7 +92,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)") -> p
+  xlab("Time (days)") -> p
 
   ggsave(here("plots","pop-dynamics.png"),p, 
          width = 7, height = 4, bg = "white")
@@ -150,7 +152,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)") ->p
+  xlab("Time (days)") ->p
   ggsave(here("plots","pop-dynamics-bg.png"),p, 
          width = 7, height = 4, bg = "white")
 p
@@ -198,7 +200,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)") -> p
+  xlab("Time (days)") -> p
   ggsave(here("plots","pop-dynamics-uninfected.png"),p,
          width = 7, height = 4, bg = "white")
   
@@ -241,7 +243,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)") -> p
+  xlab("Time (days)") -> p
   ggsave(here("plots","pop-dynamics-hosts.png"),p, 
          width = 7, height = 4, bg = "white")
   
@@ -307,7 +309,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)")
+  xlab("Time (days)")
 
 
 ```
@@ -352,7 +354,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Spores (%)")+
-  xlab("Time (day)")+
+  xlab("Time (days)")+
   ylim(0,100) -> p
   ggsave(here("plots","pop-dynamics-spores.png"), p,
          width = 5, height = 4, bg = "white")
@@ -400,7 +402,7 @@ ggplot(aes(x=Time, y = m))+
             strip.background = element_blank(),
             strip.text = element_text(face = "bold"))+
   ylab("Abundance (per mL)")+
-  xlab("Time (day)")+
+  xlab("Time (days)")+
   coord_cartesian(ylim = c(5e4, NA)) -> p
   ggsave(here("plots","pop-dynamics-spore.png"),p,
          width = 7, height = 4, bg = "white")
@@ -410,4 +412,63 @@ ggplot(aes(x=Time, y = m))+
 ```
 
 
+# spores and veg plot ALL
+```{r}
+dd <- d%>%
+  
+  filter(seed.bank == "+seed bank") %>%
+  select( -phage.ml ) %>%
+  pivot_longer(cols = c(spore.ml, veg.ml,cell.ml), names_to = "pop", values_to = "no.ml") %>%
+  mutate (pop = case_when(pop == "spore.ml" ~ "spore",
+                          pop == "veg.ml"~ "vegetative",
+                          pop == "cell.ml" ~ "total") %>% 
+            fct_relevel(c("vegetative","spore","total"))) %>%
 
+  # summarize across replicate lines  
+  group_by(seed.bank, phage, Time, pop ) %>%
+  summarise(n = n(), m = mean(no.ml), v = sd(no.ml)/sqrt(n)) %>%
+  
+  #ajust factor order for seed bank
+   mutate(seed.bank = as_factor(seed.bank) %>% fct_rev()) %>% 
+  
+  #make time by day
+  mutate(Time = 2 * Time) %>% 
+   # filter(Time %% 2 ==0) %>%
+
+   mutate(phage = 
+            if_else(phage=="SPO1", "+phage", "-phage")
+          ) 
+
+dd %>% 
+  filter(pop != "total") %>% 
+ggplot(aes(x=Time, y = m))+
+   geom_vline(xintercept = seq(0,28,2), color = "grey70", size = 0.1)+
+  geom_line(aes(color=pop))+
+  geom_linerange(aes(ymin = m-v, ymax = m+v, color = pop), size = 0.5,
+                 show.legend = F)+
+  geom_point(aes(shape=pop, fill= pop), size = 1.5)+
+  facet_grid(seed.bank ~ phage )+
+      theme_cowplot()+
+      panel_border(color = "black", size = 1.5)+
+  scale_y_log10(
+              labels = trans_format("log10", math_format(10^.x))) +
+  scale_x_continuous(breaks = c(0,7,14,21,28))+
+  scale_shape_manual(values = c(21,22,24),guide = guide_legend(reverse = TRUE))+
+  # scale_color_manual(values = c("black","black", "red"), guide = guide_legend(reverse = TRUE))+
+  # scale_fill_manual(values = c("white", "black", "red"), guide = guide_legend(reverse = TRUE))+
+  scale_color_viridis_d(end = 0.9,direction = -1,guide = guide_legend(reverse = TRUE))+
+  scale_fill_viridis_d(end = 0.9,direction = -1,guide = guide_legend(reverse = TRUE))+
+      theme(legend.position = c(.05, .15),
+            legend.title = element_blank(),
+            legend.background = element_rect(fill = "white"),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"))+
+  ylab("Abundance (per mL)")+
+  xlab("Time (days)")+
+  coord_cartesian(ylim = c(5e4, NA)) -> p
+  ggsave(here("plots","pop-dynamics-spore-ALL.png"),p,
+         width = 7, height = 4, bg = "white")
+
+  p
+
+```
